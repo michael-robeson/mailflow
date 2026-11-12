@@ -34,16 +34,18 @@ workflows inactive; import or live execution requires separate approval.
 
 A standalone [Gmail message normalizer](docs/gmail-normalization.md) converts
 synthetic full-format responses into structured text without contacting Gmail.
+A standalone [deterministic classifier](docs/email-classification.md) can
+classify normalized messages offline as a review aid.
 
 The following are **planned, not implemented**:
 
 - Full-mailbox inventory, checkpoints, and unread-message reports.
-- Rule-based classification, configurable labels, and organization.
+- Configurable classification rules, labels, and organization.
 - Human-approved bulk cleanup and incremental handling of new messages.
 - Daily summaries, weekly recommendations, and feedback-driven preferences.
 - Optional AI-assisted classification, audit records, and recovery mechanisms.
 
-There are no active classification rules or application-specific tables.
+There are no automated classification workflows or application-specific tables.
 See the [architecture](docs/architecture.md) for what exists and what is
 proposed.
 
@@ -99,6 +101,7 @@ implemented features.
 - [Bounded Gmail inventory (legacy)](docs/gmail-inventory.md)
 - [Paginated Gmail inventory](docs/gmail-paginated-inventory.md)
 - [Gmail message normalization](docs/gmail-normalization.md)
+- [Deterministic email classification](docs/email-classification.md)
 - [Architecture and data flows](docs/architecture.md)
 - [Safety model](docs/safety-rules.md)
 - [Extensibility and future deployment](docs/extensibility.md)
