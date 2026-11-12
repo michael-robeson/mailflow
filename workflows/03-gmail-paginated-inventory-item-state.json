@@ -1,0 +1,473 @@
+{
+  "name": "03 - Gmail Paginated Inventory - Item State",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "a1b3f4f3-a42a-4a05-99d1-1b4a2ca1d001",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const requested = $input.first()?.json || {};\nconst maxMessages = requested.maxMessages ?? 500;\nconst pageSize = requested.pageSize ?? 100;\nconst requestDelayMs = requested.requestDelayMs ?? 200;\n\nif (!Number.isInteger(maxMessages) || maxMessages < 1 || maxMessages > 10000) throw new Error('maxMessages must be an integer from 1 to 10000');\nif (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > 500) throw new Error('pageSize must be an integer from 1 to 500');\nif (!Number.isInteger(requestDelayMs) || requestDelayMs < 0 || requestDelayMs > 60000) throw new Error('requestDelayMs must be an integer from 0 to 60000');\n\nconst maxPages = Math.min(10000, Math.max(1, Math.ceil(maxMessages / pageSize) * 2));\nreturn [{ json: {\n  maxMessages,\n  pageSize,\n  requestDelayMs,\n  maxPages,\n  apiRequests: 0,\n  retryCount: 0,\n  partial: false,\n  errors: [],\n  pagination: {\n    nextPageToken: null,\n    pagesFetched: 0,\n    messagesDiscovered: 0,\n    messageIds: [],\n    seenPageTokens: [],\n    hasMorePages: true\n  }\n} }];"
+      },
+      "id": "a1b3f4f3-a42a-4a05-99d1-1b4a2ca1d002",
+      "name": "Configure Pagination",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const items = $input.all();\nif (items.length !== 1) throw new Error(`Expected one pagination-state item, got ${items.length}`);\nreturn [{ json: { pageState: items[0].json } }];"
+      },
+      "id": "a1b3f4f3-a42a-4a05-99d1-1b4a2ca1d003",
+      "name": "Preserve Page State",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ 'https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=' + $json.pageSize + '&fields=messages%28id%29,nextPageToken' + ($json.pagination.nextPageToken ? '&pageToken=' + encodeURIComponent($json.pagination.nextPageToken) : '') }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "json",
+              "fullResponse": true
+            }
+          }
+        }
+      },
+      "id": "a1b3f4f3-a42a-4a05-99d1-1b4a2ca1d004",
+      "name": "List Messages Page",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const items = $input.all();\nif (items.length !== 1) throw new Error(`Expected one Gmail page response, got ${items.length}`);\nreturn [{ json: { pageResponse: items[0].json } }];"
+      },
+      "id": "a1b3f4f3-a42a-4a05-99d1-1b4a2ca1d005",
+      "name": "Wrap Page Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {
+          "includeUnpaired": false
+        }
+      },
+      "id": "a1b3f4f3-a42a-4a05-99d1-1b4a2ca1d006",
+      "name": "Pair Page State and Response",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        880,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const items = $input.all();\nif (items.length !== 1) throw new Error(`Expected one paired page item, got ${items.length}`);\nconst pair = items[0].json;\nconst state = pair.pageState;\nconst response = pair.pageResponse;\nif (!state?.pagination || !response) throw new Error('Missing pagination state or Gmail response in paired page item');\n\nconst statusCode = response.statusCode;\nconst pagination = state.pagination;\nconst nextPagesFetched = pagination.pagesFetched + 1;\nconst apiRequests = state.apiRequests + 1;\nconst errors = [...state.errors];\nlet messageIds = [...pagination.messageIds];\nlet messagesDiscovered = pagination.messagesDiscovered;\nlet seenPageTokens = [...pagination.seenPageTokens];\nlet nextPageToken = null;\nlet hasMorePages = false;\nlet partial = state.partial;\n\nif (!Number.isInteger(statusCode) || statusCode < 200 || statusCode >= 300) {\n  errors.push(`Gmail list request failed (HTTP ${Number.isInteger(statusCode) ? statusCode : 'unknown'}).`);\n  return [{ json: { ...state, apiRequests, partial: true, errors, pagination: { ...pagination, pagesFetched: nextPagesFetched, hasMorePages: false } } }];\n}\n\nconst body = response.body;\nif (!body || typeof body !== 'object' || Array.isArray(body)) {\n  errors.push('Gmail list response did not contain a JSON object.');\n  return [{ json: { ...state, apiRequests, partial: true, errors, pagination: { ...pagination, pagesFetched: nextPagesFetched, hasMorePages: false } } }];\n}\nconst messages = body.messages ?? [];\nif (!Array.isArray(messages)) throw new Error('Unexpected Gmail messages list format');\nif (messages.length > state.pageSize) throw new Error('Gmail returned more messages than requested pageSize');\n\nconst knownIds = new Set(messageIds);\nlet addedThisPage = 0;\nfor (const message of messages) {\n  if (typeof message?.id !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(message.id)) throw new Error('Invalid Gmail message ID format');\n  if (!knownIds.has(message.id) && messageIds.length < state.maxMessages) {\n    knownIds.add(message.id);\n    messageIds.push(message.id);\n    addedThisPage++;\n  }\n}\nmessagesDiscovered += messages.length;\nnextPageToken = typeof body.nextPageToken === 'string' && body.nextPageToken.length > 0 ? body.nextPageToken : null;\n\nif (nextPageToken && seenPageTokens.includes(nextPageToken)) {\n  errors.push('Gmail returned a repeated page token; pagination stopped.');\n  partial = true;\n  nextPageToken = null;\n} else if (nextPageToken) {\n  seenPageTokens.push(nextPageToken);\n}\n\nif (nextPageToken && addedThisPage === 0) {\n  errors.push('Gmail pagination made no progress; pagination stopped.');\n  partial = true;\n  nextPageToken = null;\n}\n\nconst reachedLimit = messageIds.length >= state.maxMessages;\nif (reachedLimit && nextPageToken) partial = true;\nhasMorePages = Boolean(nextPageToken) && !reachedLimit;\nif (hasMorePages && nextPagesFetched >= state.maxPages) {\n  errors.push('Maximum page-request limit reached; pagination stopped.');\n  partial = true;\n  hasMorePages = false;\n}\n\nreturn [{ json: {\n  ...state,\n  apiRequests,\n  partial,\n  errors,\n  pagination: {\n    nextPageToken: hasMorePages ? nextPageToken : null,\n    pagesFetched: nextPagesFetched,\n    messagesDiscovered,\n    messageIds,\n    seenPageTokens,\n    hasMorePages\n  }\n} }];"
+      },
+      "id": "a1b3f4f3-a42a-4a05-99d1-1b4a2ca1d007",
+      "name": "Process Page Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.pagination.hasMorePages }}",
+              "operation": "equal",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "a1b3f4f3-a42a-4a05-99d1-1b4a2ca1d008",
+      "name": "Has More Pages",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        1320,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const items = $input.all();\nif (items.length !== 1) throw new Error(`Expected one state item before delay, got ${items.length}`);\nconst state = items[0].json;\nif (!Number.isInteger(state.requestDelayMs) || state.requestDelayMs < 0) throw new Error('Invalid requestDelayMs');\nawait new Promise((resolve) => setTimeout(resolve, state.requestDelayMs));\nreturn [{ json: state }];"
+      },
+      "id": "a1b3f4f3-a42a-4a05-99d1-1b4a2ca1d009",
+      "name": "Rate Limit Delay",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        -120
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const items = $input.all();\nif (items.length !== 1) throw new Error(`Expected one completed pagination item, got ${items.length}`);\nconst state = items[0].json;\nconst ids = state.pagination.messageIds;\nif (!Array.isArray(ids) || ids.length > state.maxMessages) throw new Error('Invalid accumulated message ID list');\nif (ids.length === 0) return [{ json: { skipMetadata: true, requestContext: { state }, metadataResponse: null } }];\nreturn ids.map((id) => ({ json: { skipMetadata: false, requestContext: { id, state } } }));"
+      },
+      "id": "a1b3f4f3-a42a-4a05-99d1-1b4a2ca1d010",
+      "name": "Prepare Metadata Requests",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.skipMetadata }}",
+              "operation": "equal",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "a1b3f4f3-a42a-4a05-99d1-1b4a2ca1d011",
+      "name": "Skip Empty Metadata Batch",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        1760,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const items = $input.all();\nreturn items.map((item) => ({ json: { requestContext: item.json.requestContext } }));"
+      },
+      "id": "a1b3f4f3-a42a-4a05-99d1-1b4a2ca1d012",
+      "name": "Preserve Metadata Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1980,
+        360
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ 'https://gmail.googleapis.com/gmail/v1/users/me/messages/' + encodeURIComponent($json.requestContext.id) + '?format=metadata&metadataHeaders=From&metadataHeaders=List-Unsubscribe&metadataHeaders=Precedence&fields=id%2Cpayload%28headers%28name%2Cvalue%29%29' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "json",
+              "fullResponse": true
+            }
+          }
+        }
+      },
+      "id": "a1b3f4f3-a42a-4a05-99d1-1b4a2ca1d013",
+      "name": "Get Message Metadata",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1980,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const items = $input.all();\nreturn items.map((item) => ({ json: { metadataResponse: item.json } }));"
+      },
+      "id": "a1b3f4f3-a42a-4a05-99d1-1b4a2ca1d014",
+      "name": "Wrap Metadata Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2200,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {
+          "includeUnpaired": false
+        }
+      },
+      "id": "a1b3f4f3-a42a-4a05-99d1-1b4a2ca1d015",
+      "name": "Pair Metadata Context and Response",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        2420,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const items = $input.all();\nif (items.length === 0) throw new Error('No metadata result items received');\nconst state = items[0].json.requestContext?.state;\nif (!state) throw new Error('Missing pagination state in metadata context');\n\nconst groups = new Map();\nconst processedIds = new Set();\nconst errors = [...state.errors];\nlet unknownSenderCount = 0;\nlet messagesAnalyzed = 0;\n\nfor (const item of items) {\n  const context = item.json.requestContext;\n  const response = item.json.metadataResponse;\n  if (!context?.state || context.state.pagination.pagesFetched !== state.pagination.pagesFetched) throw new Error('Metadata context does not match the final pagination state');\n  if (!context.id) continue;\n  const status = response?.statusCode;\n  if (!Number.isInteger(status) || status < 200 || status >= 300) {\n    errors.push(`Gmail metadata request failed (HTTP ${Number.isInteger(status) ? status : 'unknown'}).`);\n    continue;\n  }\n  const message = response.body;\n  if (!message || message.id !== context.id || processedIds.has(message.id)) {\n    errors.push('Gmail metadata response was missing, mismatched, or duplicated.');\n    continue;\n  }\n  processedIds.add(message.id);\n  messagesAnalyzed++;\n  const headers = message.payload?.headers;\n  if (!Array.isArray(headers) || headers.some((header) => !header || typeof header.name !== 'string' || typeof header.value !== 'string')) {\n    unknownSenderCount++;\n    continue;\n  }\n  const values = (name) => headers.filter((header) => header.name.toLowerCase() === name).map((header) => header.value);\n  const from = values('from');\n  const raw = from.length === 1 ? from[0].trim() : '';\n  const angle = raw.match(/^\\s*[^<>]*<\\s*([^<>\\s]+)\\s*>\\s*$/);\n  const addressCandidate = raw.includes('<') || raw.includes('>') ? (angle?.[1] ?? '') : raw;\n  const address = addressCandidate.trim().toLowerCase();\n  const parts = address.split('@');\n  const local = parts[0];\n  const domain = parts[1];\n  const validLocal = local.length <= 64 && local.split('.').every((part) => /^[a-z0-9!#$%&'*+/?^_`{|}~-]+$/i.test(part));\n  const validDomain = domain && domain.length <= 253 && domain.split('.').every((label) => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(label));\n  if (parts.length !== 2 || !validLocal || !validDomain) {\n    unknownSenderCount++;\n    continue;\n  }\n  if (!groups.has(address)) groups.set(address, { sender: address, count: 0, signals: { listUnsubscribe: 0, bulkOrListPrecedence: 0, noReplyAddress: 0 } });\n  const group = groups.get(address);\n  group.count++;\n  if (values('list-unsubscribe').some((value) => value.trim() !== '')) group.signals.listUnsubscribe++;\n  if (values('precedence').some((value) => /^(bulk|list|junk)$/i.test(value.trim()))) group.signals.bulkOrListPrecedence++;\n  if (/^(no[-_.]?reply|do[-_.]?not[-_.]?reply|notifications?)$/.test(local)) group.signals.noReplyAddress++;\n}\n\nconst senders = [...groups.values()].map((group) => ({\n  ...group,\n  category: Object.values(group.signals).some((count) => count > 0) ? 'potential_newsletter_or_automated' : 'no_signal',\n  safeToDelete: false\n})).sort((a, b) => b.count - a.count || a.sender.localeCompare(b.sender));\nconst apiRequests = state.apiRequests + state.pagination.messageIds.length;\nconst partial = state.partial || errors.length > 0 || messagesAnalyzed < state.pagination.messageIds.length;\nreturn [{ json: {\n  maxMessages: state.maxMessages,\n  pageSize: state.pageSize,\n  messagesDiscovered: state.pagination.messagesDiscovered,\n  messagesAnalyzed,\n  unknownSenderCount,\n  uniqueSenderCount: groups.size,\n  pagesFetched: state.pagination.pagesFetched,\n  apiRequests,\n  retryCount: state.retryCount,\n  partial,\n  errors,\n  senders\n} }];"
+      },
+      "id": "a1b3f4f3-a42a-4a05-99d1-1b4a2ca1d016",
+      "name": "Sender Inventory Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2640,
+        220
+      ]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Configure Pagination",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Configure Pagination": {
+      "main": [
+        [
+          {
+            "node": "Preserve Page State",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "List Messages Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preserve Page State": {
+      "main": [
+        [
+          {
+            "node": "Pair Page State and Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List Messages Page": {
+      "main": [
+        [
+          {
+            "node": "Wrap Page Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wrap Page Response": {
+      "main": [
+        [
+          {
+            "node": "Pair Page State and Response",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Pair Page State and Response": {
+      "main": [
+        [
+          {
+            "node": "Process Page Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Page Response": {
+      "main": [
+        [
+          {
+            "node": "Has More Pages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has More Pages": {
+      "main": [
+        [
+          {
+            "node": "Rate Limit Delay",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Metadata Requests",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rate Limit Delay": {
+      "main": [
+        [
+          {
+            "node": "Preserve Page State",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "List Messages Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Metadata Requests": {
+      "main": [
+        [
+          {
+            "node": "Skip Empty Metadata Batch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Skip Empty Metadata Batch": {
+      "main": [
+        [
+          {
+            "node": "Sender Inventory Report",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Preserve Metadata Context",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Message Metadata",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preserve Metadata Context": {
+      "main": [
+        [
+          {
+            "node": "Pair Metadata Context and Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Message Metadata": {
+      "main": [
+        [
+          {
+            "node": "Wrap Metadata Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wrap Metadata Response": {
+      "main": [
+        [
+          {
+            "node": "Pair Metadata Context and Response",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Pair Metadata Context and Response": {
+      "main": [
+        [
+          {
+            "node": "Sender Inventory Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "none",
+    "saveDataSuccessExecution": "none",
+    "saveManualExecutions": false,
+    "saveExecutionProgress": false
+  },
+  "active": false,
+  "pinData": {}
+}
