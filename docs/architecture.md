@@ -6,9 +6,12 @@ The committed Phase 1A foundation runs n8n 2.47.4 and PostgreSQL 17.11
 in Docker Compose. n8n uses PostgreSQL for its internal data; each service
 has a named volume. The Phase 1B [connectivity workflow](../workflows/01-gmail-connectivity.json)
 and [Gmail guide](gmail-read-only.md) are provided for manual setup.
-A local OAuth authorization was reported successful, but the
-workflow has not been verified against a live mailbox. It is not automatically
-imported or bound to credentials.
+Historical notes report a local manual read-only test returning five messages
+on November 12, 2026; automatic token refresh remains unverified. The
+definition is not automatically imported or bound to credentials.
+The [bounded inventory](gmail-inventory.md) is a legacy reference. The
+[item-state inventory](gmail-paginated-inventory.md#item-state-export-under-review)
+was validated against a local synthetic mock, not live Gmail.
 
 ### Current system context
 
@@ -77,8 +80,9 @@ flowchart LR
 
 The workflow requests no message bodies or attachments, uses no Gmail write
 operations, and contains a second five-item cap. Its intended use and
-limitations are in [Gmail setup](gmail-read-only.md). A larger historical
-inventory is planned, not implemented or verified.
+limitations are in [Gmail setup](gmail-read-only.md). Bounded and paginated
+inventory exports are present; full-mailbox persistence and resumption remain
+unimplemented. Older versions are references, not approved for execution.
 
 ### Incoming classification: future
 
@@ -130,8 +134,11 @@ them.
   out of exports, commits, issues, and logs. Ignore rules are not exhaustive;
   review staged content before pushing, even to a private repository.
 - **Data minimization:** the test limits results to five and requests selected
-  headers and labels. Execution output is private. The workflow disables
-  execution saves, but transient editor data and other copies may still exist.
+  headers and labels. Execution output is private. Historical notes report
+  that an imported workflow retained execution data before its save settings
+  were adjusted. Post-change retention was not live-tested, and historical
+  records or transient copies may remain; see the
+  [retention review](gmail-read-only.md#execution-retention-review).
 - **Recovery and audit:** secure backups of both service data and the key are
   necessary; no backup/restore procedure or application audit trail is
   implemented. Future mutating actions require tested recovery, explicit

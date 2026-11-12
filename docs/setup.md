@@ -12,10 +12,11 @@
 | Gmail API and OAuth 2.0 web client | Required for the Gmail test; set these up in Google Cloud as described in [Gmail setup](gmail-read-only.md). |
 | Node.js | Optional; needed only to run the synthetic workflow tests locally. |
 
-The local foundation is Phase 1A. The Phase 1B workflow is provided as an
-unbound definition and its live Gmail execution has not yet been verified.
-Do not treat OAuth authorization on one installation as authorization for
-another.
+The local foundation is Phase 1A. Historical notes report a local manual
+read-only connectivity test; the supplied definition remains unbound and
+automatic token refresh is unverified. Prior execution data may remain; review
+[execution retention](gmail-read-only.md#execution-retention-review). Do not
+treat authorization on one installation as authorization for another.
 
 ## Install locally
 

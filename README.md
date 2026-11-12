@@ -20,14 +20,21 @@ low-value. These are hypothetical numbers, not measured Mailflow results.
 ## Our solution
 
 The local foundation runs n8n and PostgreSQL in Docker Compose. A read-only
-Gmail connectivity workflow is **in progress**: a sanitized, unbound
-definition requests metadata for at most five messages. Its live execution
-has not yet been verified. One local OAuth authorization was reported
-successful; that does not verify the workflow or other installations.
+Gmail connectivity workflow is **in progress**: historical notes report a
+local read-only test returning metadata for five messages. The sanitized
+definition is unbound, and automatic OAuth token refresh remains unverified.
+Historical execution data may remain; see the
+[retention review](docs/gmail-read-only.md#execution-retention-review).
+
+The [bounded inventory](docs/gmail-inventory.md) and older
+[paginated inventory](docs/gmail-paginated-inventory.md) exports are
+legacy references. The corrected item-state export has synthetic tests and
+was validated against a local mock in n8n 2.47.4, not live Gmail. Keep all
+workflows inactive; import or live execution requires separate approval.
 
 The following are **planned, not implemented**:
 
-- Historical inventory, sender-frequency and unread-message reports.
+- Full-mailbox inventory, checkpoints, and unread-message reports.
 - Rule-based classification, configurable labels, and organization.
 - Human-approved bulk cleanup and incremental handling of new messages.
 - Daily summaries, weekly recommendations, and feedback-driven preferences.
@@ -67,8 +74,9 @@ The workflow must be imported and its credential bound locally.
 | Stage | Status | Scope |
 | --- | --- | --- |
 | Phase 1A: local foundation | Complete | Local Docker Compose, n8n, PostgreSQL, and persistent volumes. |
-| Phase 1B: Gmail connectivity | In progress | Read-only OAuth reported authorized locally; workflow definition prepared, live test and publication pending. |
-| Later: inventory and classification | Planned | Inventory, reporting, configurable rules, and incremental processing. |
+| Phase 1B: Gmail connectivity | In progress | Historical notes report a local read-only test; token refresh and retention after changes remain unverified. |
+| Phases 1C–1D: inventory | In progress | Legacy references and an item-state candidate with offline and mock-runtime validation; live candidate execution requires approval. |
+| Later: inventory and classification | Planned | Full inventory, persistence, configurable rules, and incremental processing. |
 | Later: approved actions and recommendations | Planned | Reviewed cleanup, audit and recovery, summaries, personalization, and optional AI. |
 
 Later stages describe intended capabilities, not a committed schedule or
@@ -78,6 +86,8 @@ implemented features.
 
 - [Local setup and operations](docs/setup.md)
 - [Gmail read-only connectivity](docs/gmail-read-only.md)
+- [Bounded Gmail inventory (legacy)](docs/gmail-inventory.md)
+- [Paginated Gmail inventory](docs/gmail-paginated-inventory.md)
 - [Architecture and data flows](docs/architecture.md)
 - [Safety model](docs/safety-rules.md)
 - [Extensibility and future deployment](docs/extensibility.md)
