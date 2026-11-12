@@ -1,22 +1,163 @@
 # Architecture
 
-Phase 1A runs two services on a private Compose bridge network:
+## Current implementation and status
 
-- n8n provides the local workflow editor and stores its application data in
-  PostgreSQL. Its persistent volume holds n8n settings and files.
-- PostgreSQL stores n8n's database in a separate persistent volume. It has no
-  published host port.
+The committed Phase 1A foundation runs n8n 2.47.4 and PostgreSQL 17.11
+in Docker Compose. n8n uses PostgreSQL for its internal data; each service
+has a named volume. The Phase 1B [connectivity workflow](../workflows/01-gmail-connectivity.json)
+and [Gmail guide](gmail-read-only.md) are provided for manual setup.
+A local OAuth authorization was reported successful, but the
+workflow has not been verified against a live mailbox. It is not automatically
+imported or bound to credentials.
 
-n8n listens on host `127.0.0.1:5678` only. PostgreSQL must become healthy
-before n8n starts; n8n's readiness endpoint checks that its database is
-connected and migrated. Both services restart unless explicitly stopped.
+### Current system context
 
-This is a local development configuration, not a hardened public deployment.
-HTTP and non-secure cookies are used for localhost access. The bridge network
-still permits outbound connections; localhost binding does not prevent n8n
-or a workflow from accessing external services. Do not expose it through a
-tunnel, proxy, or public webhook in this phase.
+Solid arrows are configured local relationships. Dashed arrows show the
+in-progress, manually configured Gmail connection.
 
-The checked-in configuration files are inert placeholders. No workflows or
-application-specific database migrations are installed. Future phases will
-define their schemas and behavior when needed.
+```mermaid
+flowchart LR
+    U[User] -->|localhost browser| N[n8n local container]
+    N -->|internal n8n data| P[(PostgreSQL container)]
+    N -.->|read-only OAuth flow| O[Google OAuth]
+    N -.->|GET metadata after authorization| G[Gmail API]
+    O -.->|authorization| G
+    N --- NV[(n8n named volume)]
+    P --- PV[(PostgreSQL named volume)]
+```
+
+Google Cloud is used to register the OAuth application and enable Gmail API,
+not to host the current application. n8n binds only to `127.0.0.1:5678`;
+PostgreSQL has no published host port. Both use a private Compose bridge
+network, which still permits outbound access. n8n waits for PostgreSQL health
+and exposes a database readiness health check. HTTP and non-secure cookies
+are suitable only for this local development setup; do not expose it through
+a public tunnel, proxy, or webhook.
+
+### Planned target context
+
+Everything marked future or optional below is a design direction, not a
+deployed component.
+
+```mermaid
+flowchart LR
+    U[User] -->|review and approve| N[n8n workflows]
+    N -->|authorized API calls| G[Gmail API]
+    N -->|OAuth| O[Google OAuth]
+    N -->|internal and future application state| P[(PostgreSQL)]
+    N -.->|optional future notifications| S[Notification service]
+    N -.->|optional future analysis| A[AI provider]
+    H[Future cloud hosting] -.->|may host| N
+    H -.->|may provide persistence| P
+```
+
+## Components and responsibilities
+
+| Component | Current role | Future possibilities |
+| --- | --- | --- |
+| n8n | Local workflow editor and orchestration. The proposed manual workflow uses Gmail GET requests. | Scheduling, routing, batching, error handling, and integrations, once workflows implement them. |
+| PostgreSQL | Persists n8n's internal data. | Application-specific rules, sender statistics, preferences, recommendations, execution and audit history. No such application tables or audit system exist yet. |
+| Google Cloud | Project registration, Gmail API enablement, OAuth client and consent configuration, including requested scopes. | Hosting is optional and separate from API registration. |
+| Docker Compose | Pinned local containers, lifecycle, service network, health checks, and named volumes. | Local development remains useful even if an independently designed cloud deployment is added. |
+
+The JSON files in [config](../config/) are empty placeholders, not loaded
+classification rules. There are no application-specific migrations.
+
+## Data flows
+
+### Read-only Gmail sample: in progress
+
+```mermaid
+flowchart LR
+    U[User authorizes read-only scope] --> M[User manually triggers test]
+    M --> L[GET up to five message IDs]
+    L --> D[GET selected headers and labels]
+    D --> V[Display metadata locally]
+```
+
+The workflow requests no message bodies or attachments, uses no Gmail write
+operations, and contains a second five-item cap. Its intended use and
+limitations are in [Gmail setup](gmail-read-only.md). A larger historical
+inventory is planned, not implemented or verified.
+
+### Incoming classification: future
+
+```mermaid
+flowchart LR
+    T[Future trigger] --> R[Read permitted message data]
+    R --> C[Apply configured deterministic rules]
+    C --> Q[Recommend category or action]
+    Q --> U[User reviews and approves changes]
+    U --> A[Apply approved action with appropriate scope]
+    A --> H[Record auditable outcome]
+```
+
+Optional AI could assist recommendations after deterministic rules. Neither
+the classification nor the approval and action components exist yet.
+
+### Historical cleanup: future
+
+```mermaid
+flowchart LR
+    I[Read-only inventory] --> D[Draft bounded cleanup plan]
+    D --> P[Exclude protected items and preview]
+    P --> U[User explicitly approves plan]
+    U --> B[Apply approved batches]
+    B --> H[Record outcomes and recovery information]
+    B --> S[Stop or pause on error or request]
+```
+
+No cleanup, approval, stop, audit, or rollback mechanism is implemented.
+See the [safety model](safety-rules.md) for requirements before implementing
+them.
+
+## Security architecture
+
+- **OAuth and least privilege:** the intended Phase 1B credential requests
+  only `gmail.readonly`. That scope can read message content and settings,
+  even though this workflow requests metadata only. Modifying mail requires
+  separately requested broader permission and explicit approval; read-only
+  consent does not authorize changes.
+- **Credentials and encryption:** enter OAuth secrets and tokens directly in
+  n8n, never Git. n8n stores credentials encrypted using the stable
+  `N8N_ENCRYPTION_KEY`; protect and back it up separately. Losing it can make
+  stored credentials unreadable.
+- **Environment and volumes:** `.env` supplies the database password and key,
+  is Git-ignored, and should be owner-readable only. Docker administrators
+  can inspect container environment variables; this is not a secret vault.
+  PostgreSQL and n8n named volumes persist sensitive state outside Git.
+- **GitHub:** keep secrets, local databases, execution data, and email metadata
+  out of exports, commits, issues, and logs. Ignore rules are not exhaustive;
+  review staged content before pushing, even to a private repository.
+- **Data minimization:** the test limits results to five and requests selected
+  headers and labels. Execution output is private. The workflow disables
+  execution saves, but transient editor data and other copies may still exist.
+- **Recovery and audit:** secure backups of both service data and the key are
+  necessary; no backup/restore procedure or application audit trail is
+  implemented. Future mutating actions require tested recovery, explicit
+  approval, and auditable outcomes.
+
+## Decisions and tradeoffs
+
+- **n8n instead of custom orchestration:** visual workflows and existing
+  integrations accelerate development, but require careful versioning,
+  credential management, and execution-data controls.
+- **PostgreSQL:** durable relational storage supports n8n and potential
+  structured application data, at the cost of operating and backing up a
+  separate service. Future tables must be designed and migrated explicitly.
+- **Docker Compose:** reproducible local services and isolated networking
+  reduce setup effort, but do not by themselves provide hardened hosting,
+  backups, monitoring, or high availability.
+- **Gmail API instead of browser scraping:** documented OAuth and API access
+  allow explicit scopes and structured requests, at the cost of API quotas,
+  Google Cloud configuration, and OAuth lifecycle management.
+- **Approval before high-impact changes:** reduces accidental harm but adds
+  review effort; actual approval gates must be implemented and tested.
+- **Rules first, optional AI later:** deterministic rules are easier to
+  explain and test. Models may assist with uncertain cases, but add privacy,
+  cost, and reliability risks and must not override explicit protections.
+- **Local versus cloud:** local hosting provides direct control but depends
+  on an available machine and local backups. Cloud hosting may improve
+  availability but introduces recurring cost, security, persistence,
+  background-worker, and operational responsibilities. See
+  [extensibility](extensibility.md).

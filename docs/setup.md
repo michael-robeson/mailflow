@@ -1,10 +1,32 @@
-# Local setup
+# Local setup and onboarding
 
-These commands use Fish. Run them from the project directory.
+## Prerequisites
 
-1. Verify prerequisites:
+| Dependency | Requirement |
+| --- | --- |
+| Linux, macOS, or Windows | Required, with a working Docker-compatible environment for your platform. Commands below use Fish and Bash; adapt them for other shells. |
+| Docker Engine and Docker Compose plugin | Required for the documented setup. A compatible alternative would need separate verification; Podman compatibility has not been verified. |
+| Git and access to the private GitHub repository | Required to clone the project. |
+| OpenSSL | Required for the secret-generation command below. |
+| Google account with Gmail and Google Cloud Console access | Required for the optional Phase 1B Gmail test, not for starting the local services. |
+| Gmail API and OAuth 2.0 web client | Required for the Gmail test; set these up in Google Cloud as described in [Gmail setup](gmail-read-only.md). |
+| Node.js | Optional; needed only to run the synthetic workflow tests locally. |
+
+The local foundation is Phase 1A. The Phase 1B workflow is provided as an
+unbound definition and its live Gmail execution has not yet been verified.
+Do not treat OAuth authorization on one installation as authorization for
+another.
+
+## Install locally
+
+The commands in this section are for **Fish**; step 2 explicitly invokes
+Bash. Use a directory where you want the clone.
+
+1. Clone the private repository and verify prerequisites:
 
    ```fish
+   git clone https://github.com/michael-robeson/mailflow.git
+   cd mailflow
    docker --version
    docker compose version
    docker info
@@ -12,8 +34,12 @@ These commands use Fish. Run them from the project directory.
    openssl version
    ```
 
-2. Create `.env` only if it does not already exist. The two values are
-   independently generated, and the file is private to your OS user:
+   GitHub authentication and repository access are required. If the clone
+   fails, arrange access rather than placing credentials in the URL.
+
+2. Create `.env` only if it does not already exist. The command creates the
+   same variables shown in [`.env.example`](../.env.example), independently
+   generates both values, and makes the file private to your OS user:
 
    ```fish
    bash -c 'set -eu; umask 077; set -o noclobber
@@ -22,16 +48,14 @@ These commands use Fish. Run them from the project directory.
    printf "POSTGRES_PASSWORD=%s\nN8N_ENCRYPTION_KEY=%s\nGENERIC_TIMEZONE=UTC\n" "$postgres_password" "$encryption_key" > .env'
    ```
 
-   This invokes Bash from Fish and refuses to overwrite an existing `.env`.
-   Preserve existing secrets if the command reports that the file exists.
+   Bash refuses to overwrite an existing `.env`; preserve existing secrets.
+   Optionally set `GENERIC_TIMEZONE` to an IANA timezone such as
+   `America/Chicago`. Do not replace the encryption key after n8n stores
+   credentials: losing it makes them unreadable. Changing the password in
+   `.env` does not update an existing PostgreSQL database; change the database
+   password separately before updating the configuration.
 
-   `GENERIC_TIMEZONE` can be changed to an IANA timezone such as
-   `America/Chicago`. Do not replace the encryption key after n8n has stored
-   credentials: losing it makes encrypted credentials unreadable. Changing the
-   PostgreSQL password in `.env` does not update an existing database; change
-   the database password separately before updating the configuration.
-
-3. Validate and start:
+3. Validate the configuration without printing resolved secrets, then start:
 
    ```fish
    docker compose config --quiet
@@ -39,20 +63,76 @@ These commands use Fish. Run them from the project directory.
    docker compose ps
    ```
 
-   Wait until both services are healthy, then visit
-   [http://localhost:5678](http://localhost:5678). Create an n8n owner account
-   locally; do not add Gmail or other integrations in Phase 1A.
-
-4. To stop or restart without deleting data:
+   Wait until both services show `healthy`. To check PostgreSQL readiness
+   directly, run:
 
    ```fish
-   docker compose stop
-   docker compose start
+   docker compose exec postgres pg_isready -U n8n -d n8n
    ```
 
-   `docker compose down` removes the containers and network but retains named
-   volumes by default. Never use `docker compose down --volumes` unless you
-   explicitly intend to permanently delete the database and n8n data.
+4. Open [http://localhost:5678](http://localhost:5678) and complete n8n's
+   local owner-account setup. Do not expose this development instance via
+   a public tunnel, proxy, or webhook.
+5. Follow [Gmail setup](gmail-read-only.md) to create the Google project and
+   read-only OAuth credential, import the sample, bind the credential, and
+   execute the test manually.
+
+To stop or restart without deleting data:
+
+```fish
+docker compose stop
+docker compose start
+```
+
+`docker compose down` removes the containers and network but retains named
+volumes by default. Never use `docker compose down --volumes` unless you
+explicitly intend to permanently delete the database and n8n data.
+
+## Google Cloud onboarding
+
+The Gmail connection requires API registration, not a Google Cloud hosting
+deployment. Create or select a dedicated project, enable Gmail API, configure
+the consent screen, and add your account as a test user if using an external
+app in Testing. Create a **Web application** OAuth client and register the
+exact redirect URI displayed by the local n8n credential. Request only
+`https://www.googleapis.com/auth/gmail.readonly` and enter the client
+credentials directly into n8n. The [Gmail guide](gmail-read-only.md) provides
+the exact fields and connectivity test steps; never paste credentials into
+Git, chat, logs, or issue reports.
+
+## Workflow import, execution, and versioning
+
+In the n8n editor, use the workflow menu's **Import from File** option and
+select the JSON file. Bind credentials locally after import; the sanitized
+sample deliberately has no credential binding. In n8n 2.47.4, editing saves a
+draft; publishing makes a version available to production triggers. A manual
+test runs the editor's draft via **Execute workflow** and does not require
+publishing. Leave the sample inactive; it has no production trigger. UI
+wording can vary across n8n versions.
+
+To version a workflow, use the workflow menu's **Download** option, review
+the JSON, and retain only a sanitized definition under `workflows/`. Remove
+credential names and IDs, tokens, authorization headers, pinned data, real
+execution results, and email metadata. Workflow exports can include
+credential references and pinned data; they are not automatically safe.
+Review the diff, test with synthetic data, and commit and push only after
+review and authorization. Git records definitions, not n8n's runtime state.
+
+## Troubleshooting
+
+| Symptom | Check |
+| --- | --- |
+| OAuth redirect URI mismatch | Copy the URI displayed in the n8n credential exactly into the Google web client's authorized redirect URIs, including scheme, host, port, and path. |
+| Consent denied or app unverified | Confirm the selected Google project, audience, Testing status, and test-user account. Google may show an unverified-app warning for restricted scopes. Do not grant unexpected permissions. |
+| Credential expired or revoked | Reconnect the local credential after checking the consent screen and scope. Testing-mode refresh tokens can expire; organization policies may also apply. |
+| Port 5678 already in use | Identify the conflicting service and resolve it deliberately; if changing the local URL, update and verify the OAuth redirect URI too. Do not stop unrelated containers without permission. |
+| PostgreSQL connection or health failure | Check `docker compose ps`, readiness, and sanitized `docker compose logs --tail=100 postgres n8n`. Verify both services, the Compose network, and matching database credentials; do not print `.env`. |
+| Missing credentials after import | Create or select the local OAuth2 API credential in both HTTP Request nodes. A sanitized export intentionally omits the binding. |
+| Incorrect Gmail scopes | Inspect the credential and Google consent. Cancel broader requests; use only the read-only scope for Phase 1B. Reauthorize with the correct scope if necessary. |
+
+Treat logs and error reports as sensitive: inspect locally and redact any
+credentials, email addresses, message IDs, headers, or message content before
+sharing.
 
 ## Secrets and persistence
 

@@ -1,0 +1,82 @@
+{
+  "name": "01 - Gmail Connectivity Test",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "32bef17b-3090-44bf-876a-f56a82bcb72b",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "url": "https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=5&fields=messages%28id%29",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {}
+      },
+      "id": "5c71f055-ece2-4318-8da0-af148a5d752a",
+      "name": "List Messages",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [240, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const messages = $input.first().json.messages;\nif (messages === undefined) return [];\nif (!Array.isArray(messages)) throw new Error('Unexpected Gmail message list');\nreturn messages.slice(0, 5).map((message) => {\n  if (typeof message.id !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(message.id)) {\n    throw new Error('Unexpected Gmail message ID');\n  }\n  return { json: { id: message.id } };\n});"
+      },
+      "id": "0ff41cc6-8a8b-4868-9e36-c840b302e57d",
+      "name": "Limit Message IDs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 0]
+    },
+    {
+      "parameters": {
+        "url": "={{ 'https://gmail.googleapis.com/gmail/v1/users/me/messages/' + encodeURIComponent($json.id) + '?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date&fields=id%2ClabelIds%2Cpayload%28headers%28name%2Cvalue%29%29' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {}
+      },
+      "id": "a9b70b16-a6e3-48ae-bdca-3f164cf9c9b8",
+      "name": "Get Message Metadata",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [720, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "return $input.all().map(({ json }) => {\n  const headers = json.payload?.headers ?? [];\n  const header = (name) => headers.find((item) => item.name.toLowerCase() === name)?.value ?? null;\n  return { json: { id: json.id, sender: header('from'), subject: header('subject'), date: header('date'), labels: json.labelIds ?? [] } };\n});"
+      },
+      "id": "d4a931d2-956b-44c8-849c-f7936e22c30a",
+      "name": "Show Metadata",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [960, 0]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [[{ "node": "List Messages", "type": "main", "index": 0 }]]
+    },
+    "List Messages": {
+      "main": [[{ "node": "Limit Message IDs", "type": "main", "index": 0 }]]
+    },
+    "Limit Message IDs": {
+      "main": [[{ "node": "Get Message Metadata", "type": "main", "index": 0 }]]
+    },
+    "Get Message Metadata": {
+      "main": [[{ "node": "Show Metadata", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "none",
+    "saveDataSuccessExecution": "none",
+    "saveManualExecutions": false,
+    "saveExecutionProgress": false
+  },
+  "active": false,
+  "pinData": {}
+}
