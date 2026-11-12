@@ -32,6 +32,9 @@ legacy references. The corrected item-state export has synthetic tests and
 was validated against a local mock in n8n 2.47.4, not live Gmail. Keep all
 workflows inactive; import or live execution requires separate approval.
 
+A standalone [Gmail message normalizer](docs/gmail-normalization.md) converts
+synthetic full-format responses into structured text without contacting Gmail.
+
 The following are **planned, not implemented**:
 
 - Full-mailbox inventory, checkpoints, and unread-message reports.
@@ -95,6 +98,7 @@ implemented features.
 - [Gmail read-only connectivity](docs/gmail-read-only.md)
 - [Bounded Gmail inventory (legacy)](docs/gmail-inventory.md)
 - [Paginated Gmail inventory](docs/gmail-paginated-inventory.md)
+- [Gmail message normalization](docs/gmail-normalization.md)
 - [Architecture and data flows](docs/architecture.md)
 - [Safety model](docs/safety-rules.md)
 - [Extensibility and future deployment](docs/extensibility.md)
