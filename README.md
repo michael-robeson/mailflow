@@ -69,6 +69,13 @@ Follow [local setup](docs/setup.md) for verified commands and prerequisites,
 and [Gmail setup](docs/gmail-read-only.md) for the read-only OAuth details.
 The workflow must be imported and its credential bound locally.
 
+## Quality gates
+
+Pull requests targeting `develop` run offline synthetic tests, validate workflow
+JSON and safety rules, and scan repository files for common secret patterns.
+Install the local pre-commit hook and run the same checks as described in
+[local validation](docs/setup.md#local-validation-and-git-hooks).
+
 ## Project roadmap
 
 | Stage | Status | Scope |

@@ -10,13 +10,53 @@
 | OpenSSL | Required for the secret-generation command below. |
 | Google account with Gmail and Google Cloud Console access | Required for the optional Phase 1B Gmail test, not for starting the local services. |
 | Gmail API and OAuth 2.0 web client | Required for the Gmail test; set these up in Google Cloud as described in [Gmail setup](gmail-read-only.md). |
-| Node.js | Optional; needed only to run the synthetic workflow tests locally. |
+| Node.js 22 | Required for local quality checks and the pre-commit hook; no npm packages are needed. |
 
 The local foundation is Phase 1A. Historical notes report a local manual
 read-only connectivity test; the supplied definition remains unbound and
 automatic token refresh is unverified. Prior execution data may remain; review
 [execution retention](gmail-read-only.md#execution-retention-review). Do not
 treat authorization on one installation as authorization for another.
+
+## Local validation and Git hooks
+
+Run these commands from the repository root in Fish or Bash. They use only
+Node.js and Git; they do not contact Gmail or require n8n:
+
+```sh
+node scripts/validate.cjs
+node --test tests/*.test.cjs
+```
+
+The validator scans tracked and non-ignored untracked files, checks workflow
+JSON for syntax and duplicate decoded object keys, and checks workflow safety.
+The scanner reports filenames and categories, never matching secret values.
+Ignored local files such as `.env` are not scanned unless staged. For the
+exact staged snapshot, run `node scripts/validate.cjs --staged` after staging.
+
+Install the versioned hook once per clone:
+
+```sh
+sh scripts/install-hooks.sh
+```
+
+The installer refuses to overwrite an existing different `core.hooksPath`.
+The hook validates staged file contents and runs the synthetic tests against
+the working tree. Stage the implementation and tests together, and run tests
+on the intended snapshot; unstaged changes can otherwise affect test results.
+Git does not install hooks automatically, and `--no-verify` or changes to
+`core.hooksPath` can bypass them. Reinstall after a fresh clone and use CI as
+the independent gate. Pull requests targeting `develop` run both commands.
+
+These are conservative static checks, not a proof of safety: HTTP Request
+nodes must use literal GET (or the default GET), native Gmail nodes must
+specify a permitted read operation, and exports must be inactive and omit
+credential fields, credential headers, and pinned data. Direct network and
+module-access patterns in Code nodes are also rejected. Code nodes and other
+custom nodes can nevertheless execute arbitrary behavior that static checks
+cannot reliably analyze. The lightweight secret scanner recognizes common token formats,
+credential assignments, and sensitive filenames, but cannot identify every
+secret or all execution data. Review workflow exports and diffs manually.
 
 ## Install locally
 
