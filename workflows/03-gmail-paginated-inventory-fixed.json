@@ -1,0 +1,138 @@
+{
+  "name": "03 - Gmail Paginated Inventory",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "03b9f4f3-a42a-4a05-99d1-1b4a2ca1d001",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const maxMessages = 500;\nconst pageSize = 100;\nconst requestDelayMs = 200;\nconst maxRetries = 3;\nconst retryBaseDelayMs = 1000;\n\nif (!Number.isInteger(maxMessages) || maxMessages < 1 || maxMessages > 10000) {\n  throw new Error('maxMessages must be an integer from 1 to 10000');\n}\nif (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > 500) {\n  throw new Error('pageSize must be an integer from 1 to 500');\n}\nif (!Number.isInteger(requestDelayMs) || requestDelayMs < 0 || requestDelayMs > 60000) {\n  throw new Error('requestDelayMs must be an integer from 0 to 60000');\n}\nif (!Number.isInteger(maxRetries) || maxRetries < 0 || maxRetries > 10) {\n  throw new Error('maxRetries must be an integer from 0 to 10');\n}\nif (!Number.isInteger(retryBaseDelayMs) || retryBaseDelayMs < 0 || retryBaseDelayMs > 60000) {\n  throw new Error('retryBaseDelayMs must be an integer from 0 to 60000');\n}\n\nreturn [{\n  json: {\n    maxMessages,\n    pageSize,\n    requestDelayMs,\n    maxRetries,\n    retryBaseDelayMs,\n    pagination: {\n      nextPageToken: null,\n      pagesFetched: 0,\n      messagesDiscovered: 0,\n      messageIds: []\n    },\n    apiRequests: 0,\n    retryCount: 0,\n    errors: []\n  }\n}];"
+      },
+      "id": "03b9f4f3-a42a-4a05-99d1-1b4a2ca1d002",
+      "name": "Configure Pagination",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [220, 0]
+    },
+    {
+      "parameters": {
+        "url": "={{ 'https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=' + $json.pagination.pageSize + '&fields=messages%28id%29,nextPageToken' + (($json.pagination.nextPageToken) ? '&pageToken=' + encodeURIComponent($json.pagination.nextPageToken) : '') }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {}
+      },
+      "id": "03b9f4f3-a42a-4a05-99d1-1b4a2ca1d003",
+      "name": "List Messages Page",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [440, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "// After List Messages Page (HTTP node), merge the Gmail response with the previous iteration's state.\n// The HTTP node consumes the input and outputs only the Gmail API response.\n// We need to reconstruct the full state by combining:\n// 1. Gmail response (current messages and nextPageToken)\n// 2. Previous state (from Rate Limit Delay in the prior iteration, or Configure Pagination in iteration 1)\n\nconst gmailResponse = $input.first().json;  // Current Gmail API response: {messages?, nextPageToken?}\nconst previousState = $('Rate Limit Delay').first().json || $('Configure Pagination').first().json;\n\nif (!previousState || !previousState.pagination) {\n  throw new Error('Cannot find previous state from Rate Limit Delay or Configure Pagination');\n}\n\n// Combine them: previousState provides all accumulated data; gmailResponse provides current page data\nreturn [{\n  json: {\n    ...previousState,\n    _currentGmailResponse: gmailResponse  // Preserve Gmail response for Process Page Response to use\n  }\n}];"
+      },
+      "id": "03b9f4f3-a42a-4a05-99d1-1b4a2ca1d009",
+      "name": "Merge Gmail Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [660, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Process the current page and accumulate state.\n// Receives: state from previous iteration (or initial) + current Gmail response.\n\nconst state = $input.first().json;  // This now includes previousState + _currentGmailResponse\nconst gmailResponse = state._currentGmailResponse || {};\n\nconst pageSize = state.pageSize;\nconst maxMessages = state.maxMessages;\n\nconst messages = gmailResponse.messages;\nif (messages === undefined) {\n  // Empty page (end of mailbox)\n  return [{\n    json: {\n      ...state,\n      pagination: {\n        ...state.pagination,\n        pagesFetched: state.pagination.pagesFetched + 1,\n        hasMorePages: false\n      },\n      apiRequests: state.apiRequests + 1,\n      _currentGmailResponse: undefined  // Clean up transient data\n    }\n  }];\n}\n\nif (!Array.isArray(messages)) {\n  throw new Error('Unexpected Gmail messages list format');\n}\n\nif (messages.length > pageSize) {\n  throw new Error('Gmail returned more messages than requested pageSize');\n}\n\n// Deduplication: track what we've already collected\nconst ids = new Set(state.pagination.messageIds);\nlet newIds = [];\nconst currentCount = state.pagination.messageIds.length;\n\nfor (const message of messages) {\n  if (typeof message.id !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(message.id)) {\n    throw new Error('Invalid Gmail message ID format');\n  }\n  // Only add new IDs that don't exceed maxMessages\n  if (!ids.has(message.id) && currentCount + newIds.length < maxMessages) {\n    newIds.push(message.id);\n    ids.add(message.id);\n  }\n}\n\nconst totalDiscovered = state.pagination.messagesDiscovered + messages.length;\nconst hasReachedLimit = (currentCount + newIds.length) >= maxMessages;\nconst nextPageToken = gmailResponse.nextPageToken || null;\nconst hasMorePages = !hasReachedLimit && nextPageToken !== null && nextPageToken !== '';\n\n// Detect non-progressing pagination (same token returned twice in a row)\nconst sameTokenTwice = nextPageToken && nextPageToken === state.pagination.nextPageToken && messages.length > 0;\nif (sameTokenTwice) {\n  throw new Error('Pagination error: same nextPageToken returned twice in a row');\n}\n\nreturn [{\n  json: {\n    ...state,\n    pagination: {\n      nextPageToken: nextPageToken,\n      pagesFetched: state.pagination.pagesFetched + 1,\n      messagesDiscovered: totalDiscovered,\n      messageIds: [...state.pagination.messageIds, ...newIds],\n      hasMorePages\n    },\n    apiRequests: state.apiRequests + 1,\n    _currentGmailResponse: undefined  // Clean up transient data\n  }\n}];"
+      },
+      "id": "03b9f4f3-a42a-4a05-99d1-1b4a2ca1d004",
+      "name": "Process Page Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [880, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            { "value1": "={{ $json.pagination.hasMorePages }}", "operation": "equal", "value2": true }
+          ]
+        }
+      },
+      "id": "03b9f4f3-a42a-4a05-99d1-1b4a2ca1d005",
+      "name": "Has More Pages",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1100, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Apply configurable delay between list-page requests.\n// This is the only place where explicit rate limiting is applied.\n// Metadata requests (Get Message Metadata) are sent concurrently and are NOT individually delayed.\n\nconst state = $input.first().json;  // State with accumulated pagination data\nconst delayMs = state.requestDelayMs;\n\nif (typeof delayMs !== 'number' || delayMs < 0) {\n  throw new Error('Invalid requestDelayMs');\n}\n\n// Apply delay and then pass state through for next iteration\nawait new Promise(resolve => setTimeout(resolve, delayMs));\n\n// Return state unmodified (it will be the input to List Messages Page's URL expression)\nreturn state;"
+      },
+      "id": "03b9f4f3-a42a-4a05-99d1-1b4a2ca1d006",
+      "name": "Rate Limit Delay",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1320, -100]
+    },
+    {
+      "parameters": {
+        "url": "={{ 'https://gmail.googleapis.com/gmail/v1/users/me/messages/' + encodeURIComponent($json.id) + '?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date&metadataHeaders=List-Unsubscribe&metadataHeaders=Precedence&fields=id%2ClabelIds%2Cpayload%28headers%28name%2Cvalue%29%29' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {}
+      },
+      "id": "03b9f4f3-a42a-4a05-99d1-1b4a2ca1d007",
+      "name": "Get Message Metadata",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1540, -100]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare metadata requests for all accumulated message IDs.\n// Each message ID becomes a separate request item.\n// The state is attached to each item for reference by the aggregation node.\n\nconst state = $input.first().json;\nconst ids = state.pagination.messageIds;\n\nif (!Array.isArray(ids) || ids.length === 0) {\n  return [{\n    json: {\n      ...state,\n      messagesAnalyzed: 0,\n      unknownSenderCount: 0,\n      senders: [],\n      partial: ids.length === 0\n    }\n  }];\n}\n\n// Validate: ensure we don't exceed maxMessages\nif (ids.length > state.maxMessages) {\n  throw new Error('Message ID count exceeds maxMessages limit');\n}\n\nreturn ids.map(id => ({\n  json: {\n    id,\n    state\n  }\n}));"
+      },
+      "id": "03b9f4f3-a42a-4a05-99d1-1b4a2ca1d008",
+      "name": "Prepare Metadata Requests",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1540, 120]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Aggregate all metadata and produce final inventory report.\n// This receives all message metadata from the batched Get Message Metadata requests.\n\nconst messages = $input.all();\nconst state = messages[0]?.json?.state;\n\nif (!state) {\n  throw new Error('Missing pagination state');\n}\n\nconst groups = new Map();\nconst processedIds = new Set();\nlet unknownSenderCount = 0;\nlet successCount = 0;\nlet errorCount = 0;\n\nfor (const item of messages) {\n  const message = item.json;\n  const messageId = message.id;\n  \n  if (!messageId || typeof messageId !== 'string') {\n    errorCount++;\n    continue;\n  }\n  \n  if (processedIds.has(messageId)) {\n    continue;\n  }\n  processedIds.add(messageId);\n  successCount++;\n  \n  if (!Array.isArray(message.payload?.headers)) {\n    unknownSenderCount++;\n    continue;\n  }\n  \n  const headers = message.payload.headers;\n  if (headers.some((header) => !header || typeof header.name !== 'string' || typeof header.value !== 'string')) {\n    unknownSenderCount++;\n    continue;\n  }\n  \n  const values = (name) => headers.filter((header) => header.name.toLowerCase() === name).map((header) => header.value);\n  const from = values('from');\n  const raw = from.length === 1 ? from[0].trim() : '';\n  \n  const angle = raw.match(/^([^<>@]*)<([^<>]+)>\\s*$/);\n  const address = (angle ? angle[2] : raw).trim().toLowerCase();\n  const parts = address.split('@');\n  const local = parts[0];\n  const domain = parts[1];\n  \n  const atom = \"[a-z0-9!#$%&'*+\\\\/?^_`{|}~-]+\";\n  const validLocal = new RegExp('^' + atom + '(?:\\\\.' + atom + ')*$').test(local);\n  const validDomain = domain && domain.split('.').every((label) => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label));\n  \n  if (parts.length !== 2 || !validLocal || !validDomain || local.length > 64 || domain.length > 253) {\n    unknownSenderCount++;\n    continue;\n  }\n  \n  if (!groups.has(address)) {\n    groups.set(address, {\n      sender: address,\n      count: 0,\n      signals: { listUnsubscribe: 0, bulkOrListPrecedence: 0, noReplyAddress: 0 }\n    });\n  }\n  \n  const group = groups.get(address);\n  group.count++;\n  \n  if (values('list-unsubscribe').some((value) => value.trim() !== '')) {\n    group.signals.listUnsubscribe++;\n  }\n  if (values('precedence').some((value) => /^(bulk|list|junk)$/i.test(value.trim()))) {\n    group.signals.bulkOrListPrecedence++;\n  }\n  if (/^(no[-_.]?reply|do[-_.]?not[-_.]?reply|notifications?)$/.test(local)) {\n    group.signals.noReplyAddress++;\n  }\n}\n\nconst senders = [...groups.values()]\n  .map((group) => ({\n    ...group,\n    category: Object.values(group.signals).some((count) => count > 0) ? 'potential_newsletter_or_automated' : 'no_signal',\n    safeToDelete: false\n  }))\n  .sort((a, b) => b.count - a.count || a.sender.localeCompare(b.sender));\n\n// Verify count reconciliation\nif (successCount !== state.pagination.messageIds.length) {\n  // This is OK - some metadata requests might have failed or been filtered\n  // But we should report it\n}\n\nreturn [{\n  json: {\n    ...state,\n    messagesAnalyzed: successCount,\n    unknownSenderCount,\n    uniqueSenderCount: groups.size,\n    senders,\n    partial: successCount < state.pagination.messageIds.length\n  }\n}];"
+      },
+      "id": "03b9f4f3-a42a-4a05-99d1-1b4a2ca1d010",
+      "name": "Sender Inventory Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1760, -100]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": { "main": [[{ "node": "Configure Pagination", "type": "main", "index": 0 }]] },
+    "Configure Pagination": { "main": [[{ "node": "List Messages Page", "type": "main", "index": 0 }]] },
+    "List Messages Page": { "main": [[{ "node": "Merge Gmail Response", "type": "main", "index": 0 }]] },
+    "Merge Gmail Response": { "main": [[{ "node": "Process Page Response", "type": "main", "index": 0 }]] },
+    "Process Page Response": { "main": [[{ "node": "Has More Pages", "type": "main", "index": 0 }]] },
+    "Has More Pages": {
+      "main": [
+        [{ "node": "Rate Limit Delay", "type": "main", "index": 0 }],
+        [{ "node": "Prepare Metadata Requests", "type": "main", "index": 0 }]
+      ]
+    },
+    "Rate Limit Delay": { "main": [[{ "node": "List Messages Page", "type": "main", "index": 0 }]] },
+    "Get Message Metadata": { "main": [[{ "node": "Sender Inventory Report", "type": "main", "index": 0 }]] },
+    "Prepare Metadata Requests": { "main": [[{ "node": "Get Message Metadata", "type": "main", "index": 0 }]] }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "none",
+    "saveDataSuccessExecution": "none",
+    "saveManualExecutions": false,
+    "saveExecutionProgress": false
+  },
+  "active": false,
+  "pinData": {}
+}

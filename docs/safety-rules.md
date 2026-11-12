@@ -10,7 +10,7 @@ those protections already exist. See [architecture](architecture.md) and
 
 | Level | Scope | Status and required authorization |
 | --- | --- | --- |
-| 0 — Read-only | Inventory, analysis, reporting. | The proposed manual connectivity test uses GET operations and a read-only OAuth credential; its live execution remains unverified. Larger inventory and reporting are planned. |
+| 0 — Read-only | Inventory, analysis, reporting. | A historical connectivity test is reported; the item-state inventory has synthetic validation only. Live execution requires explicit approval and retention review. |
 | 1 — Non-destructive organization | Labels and archiving; archiving hides messages from the inbox and may still be disruptive. | Planned only. Requires suitable write permissions and explicit, informed approval before changes. |
 | 2 — High-impact actions | Trash, unsubscribe, or bulk changes. | Planned only. Requires explicit approval of the concrete plan, additional safeguards, bounded batches, and appropriate permissions. Unsubscribe actions may involve third-party systems. |
 | 3 — Irreversible actions | Permanent deletion. | Disabled by project policy, outside initial scope, and not implemented. It must not be inferred from approval of other actions. |
@@ -56,7 +56,9 @@ scopes or use the broad default Gmail credential.
 Keep credentials, tokens, message contents, personal information, and local
 runtime data out of Git and logs. Review exports, pinned data, execution
 history, and staged files; ignore rules alone do not guarantee safety. The
-sample disables execution saving, but metadata may still be visible in the
-editor or transient copies. Preserve the n8n encryption key and securely back
+sample requests disabled execution saving, but historical notes report prior
+retained execution data and unverified post-change retention. See the
+[retention review](gmail-read-only.md#execution-retention-review). Metadata may
+still be visible in the editor or transient copies. Preserve the n8n encryption key and securely back
 up service data; a backup and restore procedure is not yet implemented. Do
 not expose the localhost development instance or its webhooks publicly.

@@ -1,7 +1,9 @@
 # Gmail read-only connectivity
 
-The workflow definition's live Gmail execution has not been verified. It is
-not automatically imported into n8n.
+Historical notes report a local manual read-only test returning metadata for
+five messages on November 12, 2026. Automatic OAuth token refresh and
+post-change execution retention remain unverified. The definition is not
+automatically imported into n8n.
 
 This manual test is designed to list the first page of Gmail messages,
 requesting at most five IDs, and get only the `From`, `Subject`, and `Date`
@@ -53,6 +55,9 @@ and [Google's Gmail scope reference](https://developers.google.com/workspace/gma
 
 ## Import and run
 
+The following is historical setup guidance, not authorization to import or
+run a workflow. Obtain explicit approval before either action.
+
 1. Import [the sanitized workflow](../workflows/01-gmail-connectivity.json)
    through n8n's workflow menu. It contains no credential binding; select your
    read-only **OAuth2 API** credential in both **List Messages** and
@@ -74,3 +79,29 @@ and [Google's Gmail scope reference](https://developers.google.com/workspace/gma
 
 The workflow file is a sanitized, unbound definition. Keep local
 credential bindings and real execution data out of the repository.
+
+## Execution retention review
+
+Historical notes from November 12, 2026 report that the imported connectivity
+workflow initially lacked explicit save settings and retained five manual
+execution records: three successful and two failed. Three data rows contained
+metadata-related field names; contents were not displayed. The historical
+notes reported no instance `EXECUTIONS_*` overrides and defaults of saving
+manual, successful, and failed executions, with progress saving off. After
+settings were adjusted, a read-only check reported manual, successful, and failed
+execution saving disabled; progress saving inherited an off instance default.
+No live execution verified the revised retention behavior. These observations
+are historical, not a guarantee of current configuration or record counts.
+
+Check effective workflow and instance settings after import or configuration
+changes. Disabling saving does not erase historical records, editor output,
+logs, pinned data, or backups. Inspect sensitive records locally without
+exporting them. Delete records through supported n8n controls only after
+explicit approval; do not modify PostgreSQL directly. Instance-wide execution
+settings or service restarts also require separate approval.
+
+The historical review also noted that `gmail.metadata` may be sufficient for
+some metadata-only uses, but Gmail's `messages.list` does not permit the `q`
+parameter with that scope. Any scope change requires a separate decision and
+consent. OAuth publication, restricted-scope verification, privacy disclosures,
+retention, deletion requests, and backup procedures require separate review.

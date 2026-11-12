@@ -1,0 +1,110 @@
+{
+  "name": "02 - Gmail Historical Inventory",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "03b9f4f3-a42a-4a05-99d1-1b4a2ca1c001",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const limit = 100;\nif (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new Error('Inventory limit must be an integer from 1 to 100');\nreturn [{ json: { limit } }];"
+      },
+      "id": "03b9f4f3-a42a-4a05-99d1-1b4a2ca1c002",
+      "name": "Configure Inventory",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [220, 0]
+    },
+    {
+      "parameters": {
+        "url": "={{ 'https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=' + $json.limit + '&fields=messages%28id%29' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {}
+      },
+      "id": "03b9f4f3-a42a-4a05-99d1-1b4a2ca1c003",
+      "name": "List Messages",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [440, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const limit = $('Configure Inventory').first().json.limit;\nconst messages = $input.first().json.messages;\nif (messages === undefined) return [{ json: { hasMessage: false } }];\nif (!Array.isArray(messages)) throw new Error('Unexpected Gmail message list');\nif (messages.length === 0) return [{ json: { hasMessage: false } }];\nif (messages.length > limit) throw new Error('Gmail message list exceeds the configured limit');\nconst ids = new Set();\nreturn messages.map((message) => {\n  if (typeof message.id !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(message.id) || ids.has(message.id)) throw new Error('Unexpected or duplicate Gmail message ID');\n  ids.add(message.id);\n  return { json: { hasMessage: true, id: message.id } };\n});"
+      },
+      "id": "03b9f4f3-a42a-4a05-99d1-1b4a2ca1c004",
+      "name": "Prepare Message IDs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [660, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            { "value1": "={{ $json.hasMessage }}", "operation": "equal", "value2": true }
+          ]
+        }
+      },
+      "id": "03b9f4f3-a42a-4a05-99d1-1b4a2ca1c005",
+      "name": "Has Messages",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [880, 0]
+    },
+    {
+      "parameters": {
+        "url": "={{ 'https://gmail.googleapis.com/gmail/v1/users/me/messages/' + encodeURIComponent($json.id) + '?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date&metadataHeaders=List-Unsubscribe&metadataHeaders=Precedence&fields=id%2ClabelIds%2Cpayload%28headers%28name%2Cvalue%29%29' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {}
+      },
+      "id": "03b9f4f3-a42a-4a05-99d1-1b4a2ca1c006",
+      "name": "Get Message Metadata",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1100, -100]
+    },
+    {
+      "parameters": {
+        "jsCode": "const messages = $input.all();\nconst limit = $('Configure Inventory').first().json.limit;\nif (messages.length > limit) throw new Error('Metadata count exceeds the configured limit');\nconst groups = new Map();\nconst ids = new Set();\nlet unknownSenderCount = 0;\nfor (const item of messages) {\n  const message = item.json;\n  if (typeof message.id !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(message.id) || ids.has(message.id) || !Array.isArray(message.payload?.headers)) throw new Error('Unexpected Gmail metadata response');\n  ids.add(message.id);\n  const headers = message.payload.headers;\n  if (headers.some((header) => !header || typeof header.name !== 'string' || typeof header.value !== 'string')) throw new Error('Unexpected Gmail metadata headers');\n  const values = (name) => headers.filter((header) => header.name.toLowerCase() === name).map((header) => header.value);\n  const from = values('from');\n  const raw = from.length === 1 ? from[0].trim() : '';\n  const angle = raw.match(/^([^<>@]*)<([^<>]+)>\\s*$/);\n  const address = (angle ? angle[2] : raw).trim().toLowerCase();\n  const parts = address.split('@');\n  const local = parts[0];\n  const domain = parts[1];\n  const atom = \"[a-z0-9!#$%&'*+\\\\/?^_`{|}~-]+\";\n  const validLocal = new RegExp('^' + atom + '(?:\\\\.' + atom + ')*$').test(local);\n  const validDomain = domain && domain.split('.').every((label) => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label));\n  if (parts.length !== 2 || !validLocal || !validDomain || local.length > 64 || domain.length > 253) { unknownSenderCount++; continue; }\n  if (!groups.has(address)) groups.set(address, { sender: address, count: 0, signals: { listUnsubscribe: 0, bulkOrListPrecedence: 0, noReplyAddress: 0 } });\n  const group = groups.get(address);\n  group.count++;\n  if (values('list-unsubscribe').some((value) => value.trim() !== '')) group.signals.listUnsubscribe++;\n  if (values('precedence').some((value) => /^(bulk|list|junk)$/i.test(value.trim()))) group.signals.bulkOrListPrecedence++;\n  if (/^(no[-_.]?reply|do[-_.]?not[-_.]?reply|notifications?)$/.test(local)) group.signals.noReplyAddress++;\n}\nconst senders = [...groups.values()].map((group) => ({ ...group, category: Object.values(group.signals).some((count) => count > 0) ? 'potential_newsletter_or_automated' : 'no_signal', safeToDelete: false })).sort((a, b) => b.count - a.count || a.sender.localeCompare(b.sender));\nreturn [{ json: { messagesAnalyzed: messages.length, unknownSenderCount, senders } }];"
+      },
+      "id": "03b9f4f3-a42a-4a05-99d1-1b4a2ca1c007",
+      "name": "Sender Inventory Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1320, -100]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { messagesAnalyzed: 0, unknownSenderCount: 0, senders: [] } }];"
+      },
+      "id": "03b9f4f3-a42a-4a05-99d1-1b4a2ca1c008",
+      "name": "Empty Inventory Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1100, 120]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": { "main": [[{ "node": "Configure Inventory", "type": "main", "index": 0 }]] },
+    "Configure Inventory": { "main": [[{ "node": "List Messages", "type": "main", "index": 0 }]] },
+    "List Messages": { "main": [[{ "node": "Prepare Message IDs", "type": "main", "index": 0 }]] },
+    "Prepare Message IDs": { "main": [[{ "node": "Has Messages", "type": "main", "index": 0 }]] },
+    "Has Messages": { "main": [[{ "node": "Get Message Metadata", "type": "main", "index": 0 }], [{ "node": "Empty Inventory Report", "type": "main", "index": 0 }]] },
+    "Get Message Metadata": { "main": [[{ "node": "Sender Inventory Report", "type": "main", "index": 0 }]] }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "none",
+    "saveDataSuccessExecution": "none",
+    "saveManualExecutions": false,
+    "saveExecutionProgress": false
+  },
+  "active": false,
+  "pinData": {}
+}

@@ -1,0 +1,10 @@
+#!/bin/sh
+set -eu
+
+root=$(git rev-parse --show-toplevel)
+cd "$root"
+
+echo "Checking staged workflow exports and secrets..."
+node scripts/validate.cjs --staged
+echo "Running synthetic tests from the working tree..."
+node --test tests/*.test.cjs
