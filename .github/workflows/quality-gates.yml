@@ -23,3 +23,17 @@ jobs:
         run: node scripts/validate.cjs
       - name: Run synthetic regression tests
         run: node --test tests/*.test.cjs
+
+  postgres-persistence:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Fetch test images
+        run: |
+          docker pull postgres:17.11-alpine
+          docker pull docker.n8n.io/n8nio/n8n:2.47.4
+      - name: Test persistence against isolated PostgreSQL
+        run: sh scripts/test-persistence-postgres.sh
