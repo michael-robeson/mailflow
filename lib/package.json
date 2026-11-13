@@ -1,0 +1,6 @@
+{
+  "name": "mailflow-pipeline",
+  "version": "1.0.0",
+  "private": true,
+  "main": "pipeline-adapter.cjs"
+}

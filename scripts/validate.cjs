@@ -105,8 +105,11 @@ function workflowErrors(workflow) {
         errors.push(`${node.name ?? 'HTTP node'}: only literal GET requests are allowed`);
       }
     }
-    if (node.type === 'n8n-nodes-base.code' && typeof parameters.jsCode === 'string' &&
-        /\bfetch\s*\(|\$http\b|(?:helpers\.)?httpRequest\s*\(|\brequire\s*\(|\bimport\s*(?:\(|[\w*{])/i.test(parameters.jsCode)) {
+    const codeWithoutPipelinePackage = typeof parameters.jsCode === 'string'
+      ? parameters.jsCode.replace(/\brequire\s*\(\s*(['"])mailflow-pipeline\1\s*\)/g, '')
+      : '';
+    if (node.type === 'n8n-nodes-base.code' &&
+        /\bfetch\s*\(|\$http\b|(?:helpers\.)?httpRequest\s*\(|\brequire\s*\(|\bimport\s*(?:\(|[\w*{])/i.test(codeWithoutPipelinePackage)) {
       errors.push(`${node.name ?? 'Code node'}: direct network or module access requires manual review`);
     }
     if (node.type === 'n8n-nodes-base.gmail') {

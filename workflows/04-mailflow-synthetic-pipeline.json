@@ -1,0 +1,52 @@
+{
+  "name": "04 - Mailflow Synthetic Pipeline (TEST ONLY - INACTIVE)",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "918f3b84-3c38-4e51-9bd3-748cdb1805b4",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const encode = (text) => Buffer.from(text, 'utf8').toString('base64url');\nconst messages = [\n  {\n    id: 'synthetic-interview-001',\n    threadId: 'synthetic-thread-001',\n    payload: {\n      mimeType: 'text/plain',\n      headers: [\n        { name: 'From', value: 'Example Hiring Team <hiring@example.test>' },\n        { name: 'Subject', value: 'Synthetic interview invitation' },\n      ],\n      body: { data: encode('We would like to schedule an interview.') },\n    },\n  },\n  {\n    id: 'synthetic-confirmation-002',\n    threadId: 'synthetic-thread-002',\n    payload: {\n      mimeType: 'text/plain',\n      headers: [\n        { name: 'From', value: 'Example Careers <careers@example.test>' },\n        { name: 'Subject', value: 'Synthetic application confirmation' },\n      ],\n      body: { data: encode(\"We've received your application.\") },\n    },\n  },\n  {\n    id: 'synthetic-alert-003',\n    threadId: 'synthetic-thread-003',\n    payload: {\n      mimeType: 'text/plain',\n      headers: [\n        { name: 'From', value: 'Example Jobs <jobs@example.test>' },\n        { name: 'Subject', value: 'Synthetic job alert' },\n      ],\n      body: { data: encode('New jobs matching your preferences.') },\n    },\n  },\n];\nreturn [{ json: { messages } }];"
+      },
+      "id": "8c2c871c-8a74-4c84-8d0b-95f5ab013b3d",
+      "name": "Create Synthetic Gmail Messages",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [260, 0]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const { processSyntheticBatch } = require('mailflow-pipeline');\nconst input = $input.first()?.json;\nreturn [{ json: processSyntheticBatch(input?.messages) }];"
+      },
+      "id": "2e1f4611-941c-41b8-988e-47186a6253e8",
+      "name": "Normalize Classify and Evaluate Policy",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [520, 0]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [[{ "node": "Create Synthetic Gmail Messages", "type": "main", "index": 0 }]]
+    },
+    "Create Synthetic Gmail Messages": {
+      "main": [[{ "node": "Normalize Classify and Evaluate Policy", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "none",
+    "saveDataSuccessExecution": "none",
+    "saveManualExecutions": false,
+    "saveExecutionProgress": false
+  },
+  "active": false,
+  "pinData": {}
+}

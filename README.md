@@ -38,6 +38,9 @@ A standalone [deterministic classifier](docs/email-classification.md) can
 classify normalized messages offline as a review aid.
 A standalone [notification action policy](docs/notification-policy.md) maps
 classification results to recommended timing without delivering notifications.
+An inactive [synthetic n8n pipeline](docs/synthetic-pipeline.md) demonstrates
+the complete normalization-to-policy flow and has been tested with synthetic
+data in the local n8n runtime.
 
 The following are **planned, not implemented**:
 
@@ -91,6 +94,7 @@ Install the local pre-commit hook and run the same checks as described in
 | Phase 1B: Gmail connectivity | In progress | Historical notes report a local read-only test; token refresh and retention after changes remain unverified. |
 | Phases 1C–1D: inventory | In progress | Legacy references and an item-state candidate with offline and mock-runtime validation; live candidate execution requires approval. |
 | Phase 1E: offline email decision components | Implemented | Normalization, deterministic classification, and notification action policy; no workflow or notification delivery. |
+| Phase 1F-A: synthetic pipeline integration | Implemented | Inactive test workflow verified with synthetic data in n8n; module loading requires explicit local configuration. |
 | Later: inventory and classification | Planned | Full inventory, persistence, configurable rules, and incremental processing. |
 | Later: approved actions and recommendations | Planned | Reviewed cleanup, audit and recovery, summaries, personalization, and optional AI. |
 
@@ -106,6 +110,7 @@ implemented features.
 - [Gmail message normalization](docs/gmail-normalization.md)
 - [Deterministic email classification](docs/email-classification.md)
 - [Notification action policy](docs/notification-policy.md)
+- [Synthetic n8n pipeline integration](docs/synthetic-pipeline.md)
 - [Architecture and data flows](docs/architecture.md)
 - [Safety model](docs/safety-rules.md)
 - [Extensibility and future deployment](docs/extensibility.md)

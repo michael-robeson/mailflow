@@ -15,9 +15,9 @@ was validated against a local synthetic mock, not live Gmail.
 
 The standalone [normalizer](gmail-normalization.md),
 [classifier](email-classification.md), and
-[notification action policy](notification-policy.md) run offline. They are
-not wired into n8n; the policy recommends timing but does not deliver
-notifications.
+[notification action policy](notification-policy.md) run offline. An inactive
+[synthetic pipeline](synthetic-pipeline.md) demonstrates their composition in
+n8n; it is not connected to Gmail and does not deliver notifications.
 
 ### Current system context
 
@@ -105,7 +105,8 @@ flowchart LR
 ```
 
 Normalization, classification, and policy evaluation exist as standalone
-offline modules. The trigger, workflow integration, notification delivery,
+offline modules and are integrated in a manually triggered synthetic test
+workflow. A real-mail trigger and integration, notification delivery,
 approval, and action components remain future work. Optional AI could assist
 recommendations after deterministic rules.
 

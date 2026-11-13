@@ -49,6 +49,12 @@ test('workflow validation rejects destructive, dynamic or missing Gmail operatio
   for (const jsCode of ['fetch(url)', '$http.request(options)', 'this.helpers.httpRequest(options)', "require('https')"]) {
     assert.match(workflowErrors(workflow([node('n8n-nodes-base.code', { jsCode })])).join(), /network or module/);
   }
+  assert.deepEqual(workflowErrors(workflow([node('n8n-nodes-base.code', {
+    jsCode: "const pipeline = require('mailflow-pipeline'); return pipeline.processSyntheticBatch([]);",
+  })])), []);
+  assert.match(workflowErrors(workflow([node('n8n-nodes-base.code', {
+    jsCode: "require('mailflow-pipeline'); require('fs');",
+  })])).join(), /network or module/);
 });
 
 test('secret scanner flags sensitive paths and representative secrets without reporting values', () => {
