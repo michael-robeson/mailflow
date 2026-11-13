@@ -13,6 +13,12 @@ The [bounded inventory](gmail-inventory.md) is a legacy reference. The
 [item-state inventory](gmail-paginated-inventory.md#item-state-export-under-review)
 was validated against a local synthetic mock, not live Gmail.
 
+The standalone [normalizer](gmail-normalization.md),
+[classifier](email-classification.md), and
+[notification action policy](notification-policy.md) run offline. They are
+not wired into n8n; the policy recommends timing but does not deliver
+notifications.
+
 ### Current system context
 
 Solid arrows are configured local relationships. Dashed arrows show the
@@ -84,20 +90,24 @@ limitations are in [Gmail setup](gmail-read-only.md). Bounded and paginated
 inventory exports are present; full-mailbox persistence and resumption remain
 unimplemented. Older versions are references, not approved for execution.
 
-### Incoming classification: future
+### Incoming classification and policy: future workflow
 
 ```mermaid
 flowchart LR
     T[Future trigger] --> R[Read permitted message data]
-    R --> C[Apply configured deterministic rules]
-    C --> Q[Recommend category or action]
+    R --> N[Normalize message]
+    N --> C[Classify message]
+    C --> Q[Evaluate notification action policy]
+    Q --> D[Future notification delivery, separately designed]
     Q --> U[User reviews and approves changes]
     U --> A[Apply approved action with appropriate scope]
     A --> H[Record auditable outcome]
 ```
 
-Optional AI could assist recommendations after deterministic rules. Neither
-the classification nor the approval and action components exist yet.
+Normalization, classification, and policy evaluation exist as standalone
+offline modules. The trigger, workflow integration, notification delivery,
+approval, and action components remain future work. Optional AI could assist
+recommendations after deterministic rules.
 
 ### Historical cleanup: future
 
