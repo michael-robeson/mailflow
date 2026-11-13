@@ -1,0 +1,137 @@
+{
+  "name": "05 - Mailflow Live Gmail Processing (MANUAL - INACTIVE)",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "b49fb2a0-f696-44f4-bcb1-38da44b30001",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const limit = 25;\nconst query = 'newer_than:14d';\nif (!Number.isInteger(limit) || limit < 1 || limit > 25) throw new Error('Message limit must be an integer from 1 to 25');\nif (typeof query !== 'string') throw new Error('Gmail search query must be a string');\nreturn [{ json: { limit, query } }];"
+      },
+      "id": "b49fb2a0-f696-44f4-bcb1-38da44b30002",
+      "name": "Configure Live Processing",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [220, 0]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ 'https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=' + $json.limit + '&fields=messages%28id%29' + ($json.query ? '&q=' + encodeURIComponent($json.query) : '') }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {}
+      },
+      "id": "b49fb2a0-f696-44f4-bcb1-38da44b30003",
+      "name": "List Gmail Messages",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [440, 0]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const { prepareGmailMessageList } = require('mailflow-pipeline');\nconst limit = $('Configure Live Processing').first().json.limit;\nconst messages = prepareGmailMessageList($input.first()?.json, limit);\nreturn messages.length ? messages.map((message) => ({ json: { hasMessage: true, ...message } })) : [{ json: { hasMessage: false } }];"
+      },
+      "id": "b49fb2a0-f696-44f4-bcb1-38da44b30004",
+      "name": "Prepare Message IDs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [660, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            { "value1": "={{ $json.hasMessage }}", "operation": "equal", "value2": true }
+          ]
+        }
+      },
+      "id": "b49fb2a0-f696-44f4-bcb1-38da44b30005",
+      "name": "Has Messages",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [880, 0]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ 'https://gmail.googleapis.com/gmail/v1/users/me/messages/' + encodeURIComponent($json.id) + '?format=full' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "json",
+              "fullResponse": true
+            }
+          }
+        }
+      },
+      "id": "b49fb2a0-f696-44f4-bcb1-38da44b30006",
+      "name": "Get Full Gmail Message",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "onError": "continueRegularOutput",
+      "position": [1100, -100]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const { processGmailResponse } = require('mailflow-pipeline');\nconst requests = $('Prepare Message IDs').all();\nconst responses = $input.all();\nif (responses.length !== requests.length || requests.length > 25) throw new Error('Gmail response count does not match requests');\nconst processed = new Array(requests.length);\nfor (const response of responses) {\n  const index = response.pairedItem?.item;\n  if (!Number.isInteger(index) || index < 0 || index >= requests.length || processed[index]) throw new Error('Invalid Gmail response association');\n  processed[index] = { json: processGmailResponse(requests[index].json.id, response.json, index + 1) };\n}\nreturn processed;"
+      },
+      "id": "b49fb2a0-f696-44f4-bcb1-38da44b30007",
+      "name": "Process Gmail Responses",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1320, -100]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const { sanitizeGmailReport } = require('mailflow-pipeline');\nreturn [{ json: sanitizeGmailReport($input.all().map((item) => item.json)) }];"
+      },
+      "id": "b49fb2a0-f696-44f4-bcb1-38da44b30008",
+      "name": "Sanitized Classification Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1540, -100]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const { sanitizeGmailReport } = require('mailflow-pipeline');\nreturn [{ json: sanitizeGmailReport([]) }];"
+      },
+      "id": "b49fb2a0-f696-44f4-bcb1-38da44b30009",
+      "name": "Empty Classification Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1100, 140]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": { "main": [[{ "node": "Configure Live Processing", "type": "main", "index": 0 }]] },
+    "Configure Live Processing": { "main": [[{ "node": "List Gmail Messages", "type": "main", "index": 0 }]] },
+    "List Gmail Messages": { "main": [[{ "node": "Prepare Message IDs", "type": "main", "index": 0 }]] },
+    "Prepare Message IDs": { "main": [[{ "node": "Has Messages", "type": "main", "index": 0 }]] },
+    "Has Messages": { "main": [[{ "node": "Get Full Gmail Message", "type": "main", "index": 0 }], [{ "node": "Empty Classification Report", "type": "main", "index": 0 }]] },
+    "Get Full Gmail Message": { "main": [[{ "node": "Process Gmail Responses", "type": "main", "index": 0 }]] },
+    "Process Gmail Responses": { "main": [[{ "node": "Sanitized Classification Report", "type": "main", "index": 0 }]] }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "none",
+    "saveDataSuccessExecution": "none",
+    "saveManualExecutions": false,
+    "saveExecutionProgress": false
+  },
+  "active": false,
+  "pinData": {}
+}

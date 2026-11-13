@@ -41,6 +41,9 @@ classification results to recommended timing without delivering notifications.
 An inactive [synthetic n8n pipeline](docs/synthetic-pipeline.md) demonstrates
 the complete normalization-to-policy flow and has been tested with synthetic
 data in the local n8n runtime.
+An inactive [controlled live Gmail workflow](docs/live-gmail-processing.md)
+has had two separately approved read-only runs of 25 messages; further live
+runs require separate approval.
 
 The following are **planned, not implemented**:
 
@@ -95,6 +98,7 @@ Install the local pre-commit hook and run the same checks as described in
 | Phases 1C–1D: inventory | In progress | Legacy references and an item-state candidate with offline and mock-runtime validation; live candidate execution requires approval. |
 | Phase 1E: offline email decision components | Implemented | Normalization, deterministic classification, and notification action policy; no workflow or notification delivery. |
 | Phase 1F-A: synthetic pipeline integration | Implemented | Inactive test workflow verified with synthetic data in n8n; module loading requires explicit local configuration. |
+| Phase 1F-B: controlled live Gmail processing | In progress | Inactive read-only workflow tested twice against 25-message samples; further live runs require separate approval. |
 | Later: inventory and classification | Planned | Full inventory, persistence, configurable rules, and incremental processing. |
 | Later: approved actions and recommendations | Planned | Reviewed cleanup, audit and recovery, summaries, personalization, and optional AI. |
 
@@ -111,6 +115,7 @@ implemented features.
 - [Deterministic email classification](docs/email-classification.md)
 - [Notification action policy](docs/notification-policy.md)
 - [Synthetic n8n pipeline integration](docs/synthetic-pipeline.md)
+- [Controlled live Gmail processing](docs/live-gmail-processing.md)
 - [Architecture and data flows](docs/architecture.md)
 - [Safety model](docs/safety-rules.md)
 - [Extensibility and future deployment](docs/extensibility.md)

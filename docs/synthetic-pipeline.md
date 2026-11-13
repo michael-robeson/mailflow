@@ -36,6 +36,10 @@ well. The module path is specific to the current n8n image; verify it against
 read-only and do not broaden the allowlist to `*`. On SELinux-enforcing hosts,
 use a container-compatible label such as Docker's `:z` on the disposable
 staging directory only; do not relabel the repository or existing volumes.
+The package entry point also exports the Phase 1F-B live-response adapter;
+stage all current `lib/*.cjs` files and `lib/package.json`, not only the
+files used in the original Phase 1F-A test. See the
+[live workflow runtime configuration](live-gmail-processing.md#runtime-package-configuration).
 
 ## Local runtime verification
 
