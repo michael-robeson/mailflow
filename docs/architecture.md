@@ -21,6 +21,9 @@ n8n; it is not connected to Gmail and does not deliver notifications.
 An inactive [live Gmail candidate](live-gmail-processing.md) connects the
 same pipeline to bounded read-only Gmail requests and has been run twice
 against live Gmail with separate approval. The repository export is unbound.
+The [persistence foundation](postgres-persistence.md) includes a separate
+local application database, migrated and verified with synthetic data, and an
+independent transactional adapter. It is not integrated with n8n.
 
 ### Current system context
 
@@ -36,6 +39,7 @@ flowchart LR
     O -.->|authorization| G
     N --- NV[(n8n named volume)]
     P --- PV[(PostgreSQL named volume)]
+    A[(Mailflow PostgreSQL, isolated)] --- AV[(Application named volume)]
 ```
 
 Google Cloud is used to register the OAuth application and enable Gmail API,
@@ -68,12 +72,13 @@ flowchart LR
 | Component | Current role | Future possibilities |
 | --- | --- | --- |
 | n8n | Local workflow editor and orchestration. The proposed manual workflow uses Gmail GET requests. | Scheduling, routing, batching, error handling, and integrations, once workflows implement them. |
-| PostgreSQL | Persists n8n's internal data. | Application-specific rules, sender statistics, preferences, recommendations, execution and audit history. No such application tables or audit system exist yet. |
+| PostgreSQL | Persists n8n's internal data. A separate local application cluster contains the migrated schema and synthetic test data. | Approved integration, application state, rules, preferences, recommendations and audit history. |
 | Google Cloud | Project registration, Gmail API enablement, OAuth client and consent configuration, including requested scopes. | Hosting is optional and separate from API registration. |
 | Docker Compose | Pinned local containers, lifecycle, service network, health checks, and named volumes. | Local development remains useful even if an independently designed cloud deployment is added. |
 
 The JSON files in [config](../config/) are empty placeholders, not loaded
-classification rules. There are no application-specific migrations.
+classification rules. Application migration 1 was applied only to the
+separate local application database, never to n8n's database.
 
 ## Data flows
 

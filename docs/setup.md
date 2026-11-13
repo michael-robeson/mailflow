@@ -46,7 +46,11 @@ the working tree. Stage the implementation and tests together, and run tests
 on the intended snapshot; unstaged changes can otherwise affect test results.
 Git does not install hooks automatically, and `--no-verify` or changes to
 `core.hooksPath` can bypass them. Reinstall after a fresh clone and use CI as
-the independent gate. Pull requests targeting `develop` run both commands.
+the independent gate. Pull requests targeting `develop` run both commands and
+an isolated PostgreSQL persistence integration test. CI pulls its test images;
+the local offline commands above require neither containers nor a database.
+See [persistence testing](postgres-persistence.md#provisioning-and-migration-after-approval)
+for the separate optional local database test.
 
 These are conservative static checks, not a proof of safety: HTTP Request
 nodes must use literal GET (or the default GET), native Gmail nodes must

@@ -1,0 +1,27 @@
+services:
+  mailflow-postgres:
+    image: postgres:17.11-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: mailflow
+      POSTGRES_USER: mailflow_admin
+      POSTGRES_PASSWORD: ${MAILFLOW_DB_ADMIN_PASSWORD:?Set MAILFLOW_DB_ADMIN_PASSWORD in the private environment file}
+    volumes:
+      - mailflow_application_data:/var/lib/postgresql/data
+    networks:
+      - persistence
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mailflow_admin -d mailflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  mailflow_application_data:
+    name: mailflow_application_data
+
+networks:
+  persistence:
+    name: mailflow_persistence
+    internal: true

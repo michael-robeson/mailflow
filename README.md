@@ -44,6 +44,9 @@ data in the local n8n runtime.
 An inactive [controlled live Gmail workflow](docs/live-gmail-processing.md)
 has had two separately approved read-only runs of 25 messages; further live
 runs require separate approval.
+A [PostgreSQL persistence foundation](docs/postgres-persistence.md) provides
+a standalone adapter and an opt-in separate local database, verified with
+synthetic data; it is not connected to n8n.
 
 The following are **planned, not implemented**:
 
@@ -53,7 +56,7 @@ The following are **planned, not implemented**:
 - Daily summaries, weekly recommendations, and feedback-driven preferences.
 - Optional AI-assisted classification, audit records, and recovery mechanisms.
 
-There are no automated classification workflows or application-specific tables.
+There are no automated classification workflows or live-mail persistence.
 See the [architecture](docs/architecture.md) for what exists and what is
 proposed.
 
@@ -85,7 +88,8 @@ The workflow must be imported and its credential bound locally.
 ## Quality gates
 
 Pull requests targeting `develop` run offline synthetic tests, validate workflow
-JSON and safety rules, and scan repository files for common secret patterns.
+JSON and safety rules, scan repository files for common secret patterns, and
+test persistence against a disposable isolated PostgreSQL instance.
 Install the local pre-commit hook and run the same checks as described in
 [local validation](docs/setup.md#local-validation-and-git-hooks).
 
@@ -99,6 +103,7 @@ Install the local pre-commit hook and run the same checks as described in
 | Phase 1E: offline email decision components | Implemented | Normalization, deterministic classification, and notification action policy; no workflow or notification delivery. |
 | Phase 1F-A: synthetic pipeline integration | Implemented | Inactive test workflow verified with synthetic data in n8n; module loading requires explicit local configuration. |
 | Phase 1F-B: controlled live Gmail processing | In progress | Inactive read-only workflow tested twice against 25-message samples; further live runs require separate approval. |
+| Phase 1F-C: persistence foundation | In progress | Separate local database and adapter verified with synthetic data; n8n integration requires approval. |
 | Later: inventory and classification | Planned | Full inventory, persistence, configurable rules, and incremental processing. |
 | Later: approved actions and recommendations | Planned | Reviewed cleanup, audit and recovery, summaries, personalization, and optional AI. |
 
@@ -116,6 +121,7 @@ implemented features.
 - [Notification action policy](docs/notification-policy.md)
 - [Synthetic n8n pipeline integration](docs/synthetic-pipeline.md)
 - [Controlled live Gmail processing](docs/live-gmail-processing.md)
+- [PostgreSQL persistence foundation](docs/postgres-persistence.md)
 - [Architecture and data flows](docs/architecture.md)
 - [Safety model](docs/safety-rules.md)
 - [Extensibility and future deployment](docs/extensibility.md)
