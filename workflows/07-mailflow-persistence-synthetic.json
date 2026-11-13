@@ -1,0 +1,36 @@
+{
+  "name": "07 - Mailflow Persistence Synthetic (MANUAL - INACTIVE)",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "d49fb2a0-f696-44f4-bcb1-38da44b30001",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const { processGmailResponse, persistForN8n } = require('mailflow-pipeline');\nconst message = { id: 'phase1fd_synthetic_message', threadId: 'phase1fd_synthetic_thread', payload: { mimeType: 'text/plain', headers: [{ name: 'Subject', value: 'Job alert' }], body: { data: 'TmV3IGpvYnMgbWF0Y2hpbmcgeW91ciBwcmVmZXJlbmNlcy4' } } };\nconst processed = [processGmailResponse(message.id, { statusCode: 200, body: message }, 1), processGmailResponse('phase1fd_synthetic_failure', { statusCode: 404 }, 2)];\nreturn [{ json: await persistForN8n('bcb97b68-71d8-4668-ab6d-2f96e1fd0001', 'phase1fd_synthetic', processed) }];"
+      },
+      "id": "d49fb2a0-f696-44f4-bcb1-38da44b30002",
+      "name": "Synthetic Persistence",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [220, 0]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": { "main": [[{ "node": "Synthetic Persistence", "type": "main", "index": 0 }]] }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "none",
+    "saveDataSuccessExecution": "none",
+    "saveManualExecutions": false,
+    "saveExecutionProgress": false
+  },
+  "active": false,
+  "pinData": {}
+}

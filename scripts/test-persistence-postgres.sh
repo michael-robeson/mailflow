@@ -38,7 +38,13 @@ SQL
 client_id=$(docker run -d --pull=never --network "container:$db_id" --entrypoint node \
   docker.n8n.io/n8nio/n8n:2.47.4 -e 'setInterval(() => {}, 1000)')
 docker exec "$client_id" mkdir -p /tmp/mailflow-test/lib /tmp/mailflow-test/tests/integration
-docker cp "$root/lib/persistence.cjs" "$client_id:/tmp/mailflow-test/lib/persistence.cjs"
+for file in "$root"/lib/*.cjs; do
+  docker cp "$file" "$client_id:/tmp/mailflow-test/lib/"
+done
 docker cp "$root/tests/integration/persistence-postgres.cjs" "$client_id:/tmp/mailflow-test/tests/integration/persistence-postgres.cjs"
+docker cp "$root/tests/integration/live-persistence-postgres.cjs" "$client_id:/tmp/mailflow-test/tests/integration/live-persistence-postgres.cjs"
 docker exec -e NODE_PATH=/usr/local/lib/node_modules/n8n/node_modules "$client_id" \
   node --test /tmp/mailflow-test/tests/integration/persistence-postgres.cjs
+docker exec -e NODE_PATH=/usr/local/lib/node_modules/n8n/node_modules "$client_id" \
+  node --test /tmp/mailflow-test/tests/integration/live-persistence-postgres.cjs
+docker exec -i "$db_id" psql -X -v ON_ERROR_STOP=1 -U mailflow_test_app -d postgres < "$root/sql/persistence-reports.sql"

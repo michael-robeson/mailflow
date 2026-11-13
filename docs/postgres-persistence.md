@@ -3,8 +3,9 @@
 Phase 1F-C supplies a migration and a standalone persistence adapter. On
 November 13, 2026, migration 1 was applied as the dedicated owner to a new
 local application database, and synthetic persistence was verified. The
-existing n8n PostgreSQL server was not migrated. No n8n workflow is connected
-to the new database; any live integration requires separate approval.
+existing n8n PostgreSQL server was not migrated. Synthetic and separately
+approved live integration have been verified; further live runs require
+separate approval. See [live persistence](live-persistence.md).
 
 ## Isolation and data model
 
@@ -15,8 +16,10 @@ chosen design is a **separate PostgreSQL service and volume**, with a
 dedicated `mailflow` database, migration owner, and restricted runtime role.
 This avoids sharing n8n's database cluster and its backup/restore lifecycle.
 The opt-in [Compose override](../compose.mailflow-db.yaml) defines that
-service with no published ports, its own named volume, and an internal network
-not shared with n8n. It is not started by the default Compose configuration.
+service with no published ports, its own named volume, and an internal network.
+The optional [integration override](../compose.mailflow-integration.yaml)
+connects n8n to that network; the database is not started by the default
+Compose configuration.
 Network access, resource limits, secret management, retention and any future
 integration still require review. Do not expose PostgreSQL publicly.
 
@@ -62,12 +65,12 @@ as a disposable PostgreSQL client; it does not touch the running n8n container.
 The restricted application role performed synthetic inserts and queries,
 identical and conflicting retries, historical decisions, injected rollback,
 and concurrent retries. Its attempts to alter, update, and delete were
-denied. The n8n cluster has no `mailflow_app` role and is on a different
-network; an authentication attempt using the application role against n8n's
+denied. The n8n cluster has no `mailflow_app` role; an authentication attempt
+using the application role against n8n's
 database was also denied. This does not establish safety if networks or
 credentials are later changed. Synthetic records remain in the application
-database; no live mail was stored. The schema contains no body, subject, or
-sender columns.
+database, alongside records from separately approved live processing. The
+schema contains no body, subject, or sender columns.
 
 The deployed synthetic test at
 [deployed-persistence.cjs](../tests/integration/deployed-persistence.cjs)
@@ -103,9 +106,9 @@ administrator can change records; this is not tamper-proof auditing.
 `lib/persistence.cjs` exports `createPersistenceAdapter(pool)`. The caller
 supplies a PostgreSQL pool compatible with `pg`'s `connect()`, `query(text,
 values)`, and `release(error)` API; the adapter does not install a driver or
-read credentials. It has not been integrated into the n8n Task Runner.
-Provision the driver and connection through an approved future integration;
-never put a connection string or credential in workflow code, Git or logs.
+read credentials. The optional [live integration](live-persistence.md)
+provides a driver and connection for the n8n Task Runner; never put a
+connection string or credential in workflow code, Git or logs.
 
 Call `adapter.persistBatch({ runId, accountKey, items })`. Each item contains
 only `gmailMessageId`, optional UTC `receivedAt`, `classification` with

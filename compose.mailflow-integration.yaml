@@ -1,0 +1,15 @@
+services:
+  n8n:
+    networks:
+      - mailflow
+      - persistence
+    environment:
+      NODE_FUNCTION_ALLOW_EXTERNAL: mailflow-pipeline
+    volumes:
+      - ${MAILFLOW_PIPELINE_DIR:?Set MAILFLOW_PIPELINE_DIR}:/usr/local/lib/node_modules/n8n/node_modules/mailflow-pipeline:ro,z
+      - ${MAILFLOW_APP_SECRET_DIR:?Set MAILFLOW_APP_SECRET_DIR}:/run/mailflow:ro,z
+
+networks:
+  persistence:
+    name: mailflow_persistence
+    internal: true
