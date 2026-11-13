@@ -45,8 +45,10 @@ An inactive [controlled live Gmail workflow](docs/live-gmail-processing.md)
 has had two separately approved read-only runs of 25 messages; further live
 runs require separate approval.
 A [PostgreSQL persistence foundation](docs/postgres-persistence.md) provides
-a standalone adapter and an opt-in separate local database, verified with
-synthetic data; it is not connected to n8n.
+a standalone adapter and an opt-in separate local database.
+A separate inactive [Gmail persistence candidate](docs/live-persistence.md)
+has been verified with synthetic data and a separately approved live run;
+further live use needs approval.
 
 The following are **planned, not implemented**:
 
@@ -103,7 +105,8 @@ Install the local pre-commit hook and run the same checks as described in
 | Phase 1E: offline email decision components | Implemented | Normalization, deterministic classification, and notification action policy; no workflow or notification delivery. |
 | Phase 1F-A: synthetic pipeline integration | Implemented | Inactive test workflow verified with synthetic data in n8n; module loading requires explicit local configuration. |
 | Phase 1F-B: controlled live Gmail processing | In progress | Inactive read-only workflow tested twice against 25-message samples; further live runs require separate approval. |
-| Phase 1F-C: persistence foundation | In progress | Separate local database and adapter verified with synthetic data; n8n integration requires approval. |
+| Phase 1F-C: persistence foundation | In progress | Separate local database and adapter verified with synthetic data. |
+| Phase 1F-D: live Gmail persistence | In progress | Inactive integration candidate verified with synthetic data and a separately approved live run. |
 | Later: inventory and classification | Planned | Full inventory, persistence, configurable rules, and incremental processing. |
 | Later: approved actions and recommendations | Planned | Reviewed cleanup, audit and recovery, summaries, personalization, and optional AI. |
 
@@ -122,6 +125,7 @@ implemented features.
 - [Synthetic n8n pipeline integration](docs/synthetic-pipeline.md)
 - [Controlled live Gmail processing](docs/live-gmail-processing.md)
 - [PostgreSQL persistence foundation](docs/postgres-persistence.md)
+- [Live Gmail persistence integration](docs/live-persistence.md)
 - [Architecture and data flows](docs/architecture.md)
 - [Safety model](docs/safety-rules.md)
 - [Extensibility and future deployment](docs/extensibility.md)

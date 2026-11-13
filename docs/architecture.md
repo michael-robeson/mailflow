@@ -23,7 +23,10 @@ same pipeline to bounded read-only Gmail requests and has been run twice
 against live Gmail with separate approval. The repository export is unbound.
 The [persistence foundation](postgres-persistence.md) includes a separate
 local application database, migrated and verified with synthetic data, and an
-independent transactional adapter. It is not integrated with n8n.
+independent transactional adapter.
+A separate inactive [Gmail persistence candidate](live-persistence.md) has
+been verified in the n8n runner with synthetic data and a separately approved
+live run. Further live runs require separate approval.
 
 ### Current system context
 
