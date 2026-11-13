@@ -48,10 +48,10 @@ it into HTML. Decoded entities can themselves form HTML markup. It does not inte
 CSS, fetch resources, decode every HTML entity, or guarantee layout fidelity.
 
 Normalization exposes sensitive message content to the caller. Do not log,
-pin, commit, or share results containing real messages. A future n8n Code node
-must embed or otherwise make this CommonJS logic available in its actual
-runtime; module availability, Buffer, and TextDecoder must be verified there.
-No n8n integration or Gmail body-access authorization is implied by this module.
+pin, commit, or share results containing real messages. The inactive synthetic
+pipeline documents the local-package loading configuration and synthetic
+runtime test for n8n Code nodes. No Gmail body-access authorization is implied
+by this module.
 
 Run synthetic tests with:
 
