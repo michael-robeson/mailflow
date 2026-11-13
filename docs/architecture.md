@@ -18,6 +18,9 @@ The standalone [normalizer](gmail-normalization.md),
 [notification action policy](notification-policy.md) run offline. An inactive
 [synthetic pipeline](synthetic-pipeline.md) demonstrates their composition in
 n8n; it is not connected to Gmail and does not deliver notifications.
+An inactive [live Gmail candidate](live-gmail-processing.md) connects the
+same pipeline to bounded read-only Gmail requests and has been run twice
+against live Gmail with separate approval. The repository export is unbound.
 
 ### Current system context
 
@@ -106,8 +109,9 @@ flowchart LR
 
 Normalization, classification, and policy evaluation exist as standalone
 offline modules and are integrated in a manually triggered synthetic test
-workflow. A real-mail trigger and integration, notification delivery,
-approval, and action components remain future work. Optional AI could assist
+workflow. A manual read-only real-mail candidate has been tested twice against
+Gmail; automated triggers, notification delivery, approval, and action
+components remain future work. Optional AI could assist
 recommendations after deterministic rules.
 
 ### Historical cleanup: future

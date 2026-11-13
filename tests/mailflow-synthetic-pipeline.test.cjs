@@ -27,7 +27,7 @@ async function runCode(node, items) {
   const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
   const localRequire = (name) => {
     assert.equal(name, 'mailflow-pipeline');
-    return require('../lib/pipeline-adapter.cjs');
+    return require('../lib');
   };
   const execute = new AsyncFunction('$input', 'require', node.parameters.jsCode);
   return await execute(inputContext(items), localRequire);
