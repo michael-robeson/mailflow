@@ -1,0 +1,163 @@
+{
+  "name": "08 - Mailflow Historical Ingestion (MANUAL - INACTIVE)",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "e59fb2a0-f696-44f4-bcb1-38da44b30001",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const { createHistoricalState, openHistoricalForN8n } = require('mailflow-pipeline');\nconst ingestionId = '';\nconst accountKey = '';\nconst query = '';\nconst pageSize = 25;\nconst maxMessages = 100;\nconst config = { ingestionId, accountKey, query, pageSize, maxMessages };\ncreateHistoricalState(config);\nreturn [{ json: await openHistoricalForN8n(config) }];"
+      },
+      "id": "e59fb2a0-f696-44f4-bcb1-38da44b30002",
+      "name": "Configure Historical Ingestion",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [220, 0]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "return [{ json: $input.first().json }];"
+      },
+      "id": "e59fb2a0-f696-44f4-bcb1-38da44b30003",
+      "name": "Request Page",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [440, 0]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ 'https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=' + Math.min($json.pageSize, $json.maxMessages - $json.discovered) + '&fields=messages%28id%29,nextPageToken' + ($json.query ? '&q=' + encodeURIComponent($json.query) : '') + ($json.nextPageToken ? '&pageToken=' + encodeURIComponent($json.nextPageToken) : '') }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {}
+      },
+      "id": "e59fb2a0-f696-44f4-bcb1-38da44b30004",
+      "name": "List Gmail Page",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [660, 0]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const { prepareHistoricalPage } = require('mailflow-pipeline');\nconst state = $('Request Page').first().json;\nconst page = prepareHistoricalPage(state, $input.first().json);\nreturn [{ json: page }];"
+      },
+      "id": "e59fb2a0-f696-44f4-bcb1-38da44b30005",
+      "name": "Prepare Page",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [880, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [{ "value1": "={{ $json.messages.length > 0 }}", "operation": "equal", "value2": true }]
+        }
+      },
+      "id": "e59fb2a0-f696-44f4-bcb1-38da44b30006",
+      "name": "Has Messages",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1100, 0]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "return $input.first().json.messages.map((message) => ({ json: message }));"
+      },
+      "id": "e59fb2a0-f696-44f4-bcb1-38da44b30007",
+      "name": "Expand Messages",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1320, -120]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ 'https://gmail.googleapis.com/gmail/v1/users/me/messages/' + encodeURIComponent($json.id) + '?format=full' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": { "response": { "response": { "neverError": true, "responseFormat": "json", "fullResponse": true } } }
+      },
+      "id": "e59fb2a0-f696-44f4-bcb1-38da44b30008",
+      "name": "Get Full Gmail Message",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "onError": "continueRegularOutput",
+      "position": [1540, -120]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const { processGmailResponse, persistHistoricalForN8n } = require('mailflow-pipeline');\nconst state = $('Prepare Page').first().json.state;\nconst requests = $('Expand Messages').all();\nconst responses = $input.all();\nif (responses.length !== requests.length || requests.length > state.pageSize) throw new Error('Gmail response count does not match requests');\nconst processed = new Array(requests.length);\nfor (const response of responses) {\n  const index = response.pairedItem?.item;\n  if (!Number.isInteger(index) || index < 0 || index >= requests.length || processed[index]) throw new Error('Invalid Gmail response association');\n  processed[index] = processGmailResponse(requests[index].json.id, response.json, index + 1);\n}\nreturn [{ json: await persistHistoricalForN8n(state, processed) }];"
+      },
+      "id": "e59fb2a0-f696-44f4-bcb1-38da44b30009",
+      "name": "Process and Persist Page",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1760, -120]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const { persistHistoricalForN8n } = require('mailflow-pipeline');\nreturn [{ json: await persistHistoricalForN8n($input.first().json.state, []) }];"
+      },
+      "id": "e59fb2a0-f696-44f4-bcb1-38da44b30010",
+      "name": "Empty Page",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1320, 140]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [{ "value1": "={{ $json.hasMore }}", "operation": "equal", "value2": true }]
+        }
+      },
+      "id": "e59fb2a0-f696-44f4-bcb1-38da44b30011",
+      "name": "Has Pending Page",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1980, 0]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const { historicalReport } = require('mailflow-pipeline');\nreturn [{ json: historicalReport($input.first().json) }];"
+      },
+      "id": "e59fb2a0-f696-44f4-bcb1-38da44b30012",
+      "name": "Already Complete Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2200, 120]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": { "main": [[{ "node": "Configure Historical Ingestion", "type": "main", "index": 0 }]] },
+    "Configure Historical Ingestion": { "main": [[{ "node": "Has Pending Page", "type": "main", "index": 0 }]] },
+    "Request Page": { "main": [[{ "node": "List Gmail Page", "type": "main", "index": 0 }]] },
+    "List Gmail Page": { "main": [[{ "node": "Prepare Page", "type": "main", "index": 0 }]] },
+    "Prepare Page": { "main": [[{ "node": "Has Messages", "type": "main", "index": 0 }]] },
+    "Has Messages": { "main": [[{ "node": "Expand Messages", "type": "main", "index": 0 }], [{ "node": "Empty Page", "type": "main", "index": 0 }]] },
+    "Expand Messages": { "main": [[{ "node": "Get Full Gmail Message", "type": "main", "index": 0 }]] },
+    "Get Full Gmail Message": { "main": [[{ "node": "Process and Persist Page", "type": "main", "index": 0 }]] },
+    "Has Pending Page": { "main": [[{ "node": "Request Page", "type": "main", "index": 0 }], [{ "node": "Already Complete Report", "type": "main", "index": 0 }]] }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "none",
+    "saveDataSuccessExecution": "none",
+    "saveManualExecutions": false,
+    "saveExecutionProgress": false
+  },
+  "active": false,
+  "pinData": {}
+}

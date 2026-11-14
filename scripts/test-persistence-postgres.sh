@@ -8,8 +8,8 @@ cleanup() {
   status=$?
   trap - EXIT
   set +e
-  if [ -n "$client_id" ]; then docker rm -fv "$client_id" >/dev/null || status=1; fi
-  if [ -n "$db_id" ]; then docker rm -fv "$db_id" >/dev/null || status=1; fi
+  if [ -n "$client_id" ]; then docker rm -f "$client_id" >/dev/null || status=1; fi
+  if [ -n "$db_id" ]; then docker rm -f "$db_id" >/dev/null || status=1; fi
   exit "$status"
 }
 trap cleanup EXIT
@@ -25,13 +25,16 @@ until docker exec "$db_id" pg_isready -U postgres -d postgres >/dev/null 2>&1; d
 done
 docker exec -i "$db_id" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres < "$root/migrations/001_persistence_foundation.sql"
 docker exec -i "$db_id" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres < "$root/migrations/001_persistence_foundation.sql"
+docker exec -i "$db_id" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres < "$root/migrations/002_historical_ingestion.sql"
+docker exec -i "$db_id" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres < "$root/migrations/002_historical_ingestion.sql"
 docker exec -i "$db_id" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres <<'SQL'
 CREATE ROLE mailflow_test_app LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION;
 GRANT CONNECT ON DATABASE postgres TO mailflow_test_app;
 GRANT USAGE ON SCHEMA mailflow TO mailflow_test_app;
 GRANT SELECT ON mailflow.schema_migrations TO mailflow_test_app;
 GRANT SELECT, INSERT ON mailflow.messages, mailflow.classifications, mailflow.policy_decisions,
-  mailflow.workflow_runs, mailflow.action_log TO mailflow_test_app;
+  mailflow.workflow_runs, mailflow.action_log, mailflow.historical_ingestions,
+  mailflow.historical_checkpoints TO mailflow_test_app;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA mailflow TO mailflow_test_app;
 SQL
 
@@ -43,8 +46,11 @@ for file in "$root"/lib/*.cjs; do
 done
 docker cp "$root/tests/integration/persistence-postgres.cjs" "$client_id:/tmp/mailflow-test/tests/integration/persistence-postgres.cjs"
 docker cp "$root/tests/integration/live-persistence-postgres.cjs" "$client_id:/tmp/mailflow-test/tests/integration/live-persistence-postgres.cjs"
+docker cp "$root/tests/integration/historical-ingestion-postgres.cjs" "$client_id:/tmp/mailflow-test/tests/integration/historical-ingestion-postgres.cjs"
 docker exec -e NODE_PATH=/usr/local/lib/node_modules/n8n/node_modules "$client_id" \
   node --test /tmp/mailflow-test/tests/integration/persistence-postgres.cjs
 docker exec -e NODE_PATH=/usr/local/lib/node_modules/n8n/node_modules "$client_id" \
   node --test /tmp/mailflow-test/tests/integration/live-persistence-postgres.cjs
+docker exec -e NODE_PATH=/usr/local/lib/node_modules/n8n/node_modules "$client_id" \
+  node --test /tmp/mailflow-test/tests/integration/historical-ingestion-postgres.cjs
 docker exec -i "$db_id" psql -X -v ON_ERROR_STOP=1 -U mailflow_test_app -d postgres < "$root/sql/persistence-reports.sql"
