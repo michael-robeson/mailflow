@@ -49,6 +49,9 @@ a standalone adapter and an opt-in separate local database.
 A separate inactive [Gmail persistence candidate](docs/live-persistence.md)
 has been verified with synthetic data and a separately approved live run;
 further live use needs approval.
+An inactive [historical ingestion candidate](docs/historical-ingestion.md)
+adds bounded pagination and checkpointed recovery, verified with synthetic data
+and a separately approved bounded live run; further live use requires approval.
 
 The following are **planned, not implemented**:
 
@@ -58,7 +61,7 @@ The following are **planned, not implemented**:
 - Daily summaries, weekly recommendations, and feedback-driven preferences.
 - Optional AI-assisted classification, audit records, and recovery mechanisms.
 
-There are no automated classification workflows or live-mail persistence.
+There are no automatically triggered classification or live-mail persistence workflows.
 See the [architecture](docs/architecture.md) for what exists and what is
 proposed.
 
@@ -107,6 +110,7 @@ Install the local pre-commit hook and run the same checks as described in
 | Phase 1F-B: controlled live Gmail processing | In progress | Inactive read-only workflow tested twice against 25-message samples; further live runs require separate approval. |
 | Phase 1F-C: persistence foundation | In progress | Separate local database and adapter verified with synthetic data. |
 | Phase 1F-D: live Gmail persistence | In progress | Inactive integration candidate verified with synthetic data and a separately approved live run. |
+| Phase 1G-A: bounded historical ingestion | In progress | Synthetic runtime and a separately approved bounded live run verified; further live use requires approval. |
 | Later: inventory and classification | Planned | Full inventory, persistence, configurable rules, and incremental processing. |
 | Later: approved actions and recommendations | Planned | Reviewed cleanup, audit and recovery, summaries, personalization, and optional AI. |
 
@@ -126,6 +130,7 @@ implemented features.
 - [Controlled live Gmail processing](docs/live-gmail-processing.md)
 - [PostgreSQL persistence foundation](docs/postgres-persistence.md)
 - [Live Gmail persistence integration](docs/live-persistence.md)
+- [Bounded historical ingestion](docs/historical-ingestion.md)
 - [Architecture and data flows](docs/architecture.md)
 - [Safety model](docs/safety-rules.md)
 - [Extensibility and future deployment](docs/extensibility.md)
