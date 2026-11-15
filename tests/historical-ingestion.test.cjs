@@ -7,7 +7,8 @@ const { workflowErrors } = require('../scripts/validate.cjs');
 const { processGmailResponse } = require('../lib/gmail-live.cjs');
 const {
   createHistoricalState, openHistoricalIngestion, prepareHistoricalPage,
-  persistHistoricalPage, saveHistoricalCheckpoint, historicalReport,
+  persistHistoricalPage, saveHistoricalCheckpoint, historicalReport, historicalLoopResult, historicalFinalReport,
+  HistoricalPaginationError,
 } = require('../lib/historical-ingestion.cjs');
 
 const ingestionId = 'c0000000-0000-4000-8000-000000000001';
@@ -277,4 +278,115 @@ test('checkpoints bind configuration and only advance after a successful page', 
   assert.equal(state.pages, 1);
   assert.equal(state.nextPageToken, 'next');
   await assert.rejects(openHistoricalIngestion(pool, { ...config, query: 'changed' }), /different configuration/);
+});
+
+test('multi-page exports are inactive, unbound and isolate each page in a child workflow', () => {
+  const parent = JSON.parse(fs.readFileSync('workflows/09-mailflow-historical-multi-page.json', 'utf8'));
+  const child = JSON.parse(fs.readFileSync('workflows/09-mailflow-historical-one-page.json', 'utf8'));
+  for (const candidate of [parent, child]) {
+    assert.deepEqual(workflowErrors(candidate), []);
+    assert.equal(candidate.settings.saveManualExecutions, false);
+    assert.equal(candidate.settings.saveDataErrorExecution, 'none');
+    assert.equal(candidate.settings.saveDataSuccessExecution, 'none');
+    assert.equal(candidate.settings.saveExecutionProgress, false);
+  }
+  assert.deepEqual(parent.nodes.filter((node) => node.type.endsWith('Trigger')).map((node) => node.type),
+    ['n8n-nodes-base.manualTrigger']);
+  const call = parent.nodes.find((node) => node.name === 'Run One Page');
+  assert.equal(call.parameters.source, 'parameter');
+  assert.equal(call.parameters.workflowJson, '');
+  assert.equal(call.parameters.options.waitForSubWorkflow, true);
+  assert.deepEqual(child.nodes.filter((node) => node.type.endsWith('Trigger')).map((node) => node.type),
+    ['n8n-nodes-base.executeWorkflowTrigger']);
+  const requests = child.nodes.filter((node) => node.type === 'n8n-nodes-base.httpRequest');
+  assert.equal(requests.length, 2);
+  assert.ok(requests.every((node) => node.parameters.method === 'GET' && !node.credentials));
+  const code = parent.nodes.find((node) => node.name === 'Configure Ingestion').parameters.jsCode;
+  assert.match(code, /const ingestionId = ''/);
+  assert.match(code, /const accountKey = ''/);
+  assert.match(code, /const query = ''/);
+});
+
+test('multi-page loop checkpoints before requesting the next page and stops at the limit', async () => {
+  const pool = fakePool();
+  let state = await openHistoricalIngestion(pool, config);
+  const pages = [[['a', 'b'], 'one'], [['c', 'd'], 'two'], [['e'], 'three']];
+  let step;
+  for (const [ids, token] of pages) {
+    assert.equal((pool.checkpoints.get(config.ingestionId) ?? []).length, state.pages);
+    const previous = state;
+    const page = prepareHistoricalPage(previous, { messages: ids.map((id) => ({ id })), nextPageToken: token });
+    const completed = await persistHistoricalPage(pool, page.state, ids.map((id) => message(id)));
+    await saveHistoricalCheckpoint(pool, completed);
+    step = historicalLoopResult(previous, { state: completed, retryCurrentPage: false });
+    state = step.state;
+  }
+  assert.equal(step.continue, false);
+  assert.equal(step.report.stopReason, 'limit');
+  assert.equal(step.report.pages, 3);
+  assert.equal(step.report.persisted, 5);
+  assert.equal(pool.checkpoints.get(config.ingestionId).length, 3);
+  assert.ok(!JSON.stringify(step.report).includes(config.ingestionId));
+});
+
+test('multi-page loop resumes after interruption, reports failures and retries without duplicate histories', async () => {
+  const pool = fakePool();
+  let previous = await openHistoricalIngestion(pool, config);
+  let page = prepareHistoricalPage(previous, { messages: [{ id: 'a' }], nextPageToken: 'one' });
+  let completed = await persistHistoricalPage(pool, page.state, [message('a')]);
+  await saveHistoricalCheckpoint(pool, completed);
+  previous = await openHistoricalIngestion(pool, config);
+  page = prepareHistoricalPage(previous, { messages: [{ id: 'b' }, { id: 'c' }] });
+  completed = await persistHistoricalPage(pool, page.state,
+    [message('b'), processGmailResponse('c', { statusCode: 404 }, 2)]);
+  const failed = historicalLoopResult(previous, { state: completed, retryCurrentPage: true });
+  assert.equal(failed.report.stopReason, 'message_failure');
+  assert.equal(failed.report.pages, 1);
+  assert.equal(failed.report.failed, 1);
+  assert.equal(failed.report.stoppedAtLimit, false);
+  assert.equal(failed.report.hasMore, true);
+  assert.equal(pool.checkpoints.get(config.ingestionId).length, 1);
+  previous = await openHistoricalIngestion(pool, config);
+  page = prepareHistoricalPage(previous, { messages: [{ id: 'b' }, { id: 'c' }] });
+  completed = await persistHistoricalPage(pool, page.state, [message('b'), message('c')]);
+  await saveHistoricalCheckpoint(pool, completed);
+  const resumed = historicalLoopResult(previous, { state: completed, retryCurrentPage: false });
+  assert.equal(resumed.report.stopReason, 'exhausted');
+  assert.equal(resumed.report.previouslyProcessed, 1);
+  assert.equal(resumed.report.pages, 2);
+  assert.equal(pool.runs.size, 3);
+  assert.equal(historicalFinalReport(previous, 'list_failure').stopReason, 'list_failure');
+});
+
+test('one-page workflow returns sanitized list and pagination failures without checkpointing', async () => {
+  const child = JSON.parse(fs.readFileSync('workflows/09-mailflow-historical-one-page.json', 'utf8'));
+  const code = child.nodes.find((node) => node.name === 'Prepare Page').parameters.jsCode;
+  const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+  const prepare = new AsyncFunction('require', '$', '$input', code);
+  const loadPackage = () => ({ prepareHistoricalPage, HistoricalPaginationError });
+  let state = createHistoricalState(config);
+  const run = (response) => prepare(loadPackage, () => ({ first: () => ({ json: state }) }),
+    { first: () => ({ json: response }) });
+  assert.equal((await run({ error: 'synthetic network error' }))[0].json.stopReason, 'list_failure');
+  assert.equal((await run({ messages: [], nextPageToken: 'stalled' }))[0].json.stopReason, 'pagination_failure');
+  state = prepareHistoricalPage(state, { messages: [{ id: 'a' }], nextPageToken: 'repeat' }).state;
+  const repeated = (await run({ messages: [{ id: 'b' }], nextPageToken: 'repeat' }))[0].json;
+  assert.equal(repeated.stopReason, 'pagination_failure');
+  assert.equal(historicalFinalReport(repeated.previous, repeated.stopReason).pages, 1);
+  const malformed = (await run({ messages: 'not-an-array' }))[0].json;
+  assert.equal(malformed.stopReason, 'pagination_failure');
+  assert.ok(!JSON.stringify(historicalFinalReport(malformed.previous, malformed.stopReason)).includes('repeat'));
+});
+
+test('multi-page progress guard rejects stale, changed and failed states', () => {
+  const previous = createHistoricalState(config);
+  const page = prepareHistoricalPage(previous, { messages: [{ id: 'a' }], nextPageToken: 'one' }).state;
+  assert.throws(() => historicalLoopResult(previous, { state: previous, retryCurrentPage: false }), /no progress/);
+  assert.throws(() => historicalLoopResult(previous, { state: { ...page, accountKey: 'other' }, retryCurrentPage: false }), /configuration/);
+  assert.throws(() => historicalLoopResult(previous, { state: { ...page, failed: 1 }, retryCurrentPage: false }), /Failed page/);
+  assert.throws(() => historicalLoopResult(previous, { state: { ...page, discovered: NaN }, retryCurrentPage: false }), /no progress/);
+  assert.throws(() => historicalLoopResult(previous, { state: { ...page, hasMore: false }, retryCurrentPage: false }), /pagination state/);
+  assert.throws(() => historicalLoopResult(previous, { state: { ...page, seenPageTokens: [] }, retryCurrentPage: false }), /pagination state/);
+  assert.throws(() => historicalLoopResult(previous, { state: page, retryCurrentPage: true }), /retry state/);
+  assert.throws(() => historicalFinalReport(previous), /pending/);
 });

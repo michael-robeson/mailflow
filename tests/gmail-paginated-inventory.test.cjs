@@ -32,8 +32,11 @@ const run = (name, input, config = {}) => {
     errors: []
   };
   const state = { ...defaults, ...config };
+  const nodeInput = name === 'Process Page Response'
+    ? { first: () => ({ json: { pageState: state, pageResponse: input.first().json } }) }
+    : input;
   return new Function('$input', '$', node(name).parameters.jsCode)(
-    input,
+    nodeInput,
     (name) => {
       assert.equal(name, 'Configure Pagination');
       return { first: () => ({ json: state }) };
@@ -434,8 +437,15 @@ test('workflow graph and pagination connections are correct', () => {
   const connections = workflow.connections;
   
   assert.deepEqual(connections['Manual Trigger'].main, [[{ node: 'Configure Pagination', type: 'main', index: 0 }]]);
-  assert.deepEqual(connections['Configure Pagination'].main, [[{ node: 'List Messages Page', type: 'main', index: 0 }]]);
-  assert.deepEqual(connections['List Messages Page'].main, [[{ node: 'Process Page Response', type: 'main', index: 0 }]]);
+  const pageBranches = [[
+    { node: 'Preserve Page State', type: 'main', index: 0 },
+    { node: 'List Messages Page', type: 'main', index: 0 }
+  ]];
+  assert.deepEqual(connections['Configure Pagination'].main, pageBranches);
+  assert.deepEqual(connections['Preserve Page State'].main, [[{ node: 'Pair Page State and Response', type: 'main', index: 0 }]]);
+  assert.deepEqual(connections['List Messages Page'].main, [[{ node: 'Wrap Page Response', type: 'main', index: 0 }]]);
+  assert.deepEqual(connections['Wrap Page Response'].main, [[{ node: 'Pair Page State and Response', type: 'main', index: 1 }]]);
+  assert.deepEqual(connections['Pair Page State and Response'].main, [[{ node: 'Process Page Response', type: 'main', index: 0 }]]);
   assert.deepEqual(connections['Process Page Response'].main, [[{ node: 'Has More Pages', type: 'main', index: 0 }]]);
   
   assert.deepEqual(connections['Has More Pages'].main, [
@@ -443,7 +453,7 @@ test('workflow graph and pagination connections are correct', () => {
     [{ node: 'Prepare Metadata Requests', type: 'main', index: 0 }]
   ]);
   
-  assert.deepEqual(connections['Rate Limit Delay'].main, [[{ node: 'List Messages Page', type: 'main', index: 0 }]]);
+  assert.deepEqual(connections['Rate Limit Delay'].main, pageBranches);
   assert.deepEqual(connections['Prepare Metadata Requests'].main, [[{ node: 'Get Message Metadata', type: 'main', index: 0 }]]);
   assert.deepEqual(connections['Get Message Metadata'].main, [[{ node: 'Sender Inventory Report', type: 'main', index: 0 }]]);
 });
