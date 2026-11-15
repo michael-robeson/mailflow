@@ -21,7 +21,41 @@
     },
     {
       "parameters": {
-        "url": "={{ 'https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=' + $json.pagination.pageSize + '&fields=messages%28id%29,nextPageToken' + (($json.pagination.nextPageToken) ? '&pageToken=' + encodeURIComponent($json.pagination.nextPageToken) : '') }}",
+        "mode": "runOnceForAllItems",
+        "jsCode": "const items = $input.all();\nif (items.length !== 1) throw new Error(`Expected one pagination-state item, got ${items.length}`);\nreturn [{ json: { pageState: items[0].json } }];"
+      },
+      "id": "03b9f4f3-a42a-4a05-99d1-1b4a2ca1d010",
+      "name": "Preserve Page State",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [440, 180]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const items = $input.all();\nif (items.length !== 1) throw new Error(`Expected one Gmail page response, got ${items.length}`);\nreturn [{ json: { pageResponse: items[0].json } }];"
+      },
+      "id": "03b9f4f3-a42a-4a05-99d1-1b4a2ca1d011",
+      "name": "Wrap Page Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [660, -120]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": { "includeUnpaired": false }
+      },
+      "id": "03b9f4f3-a42a-4a05-99d1-1b4a2ca1d012",
+      "name": "Pair Page State and Response",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [660, 120]
+    },
+    {
+      "parameters": {
+        "url": "={{ 'https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=' + $json.pageSize + '&fields=messages%28id%29,nextPageToken' + (($json.pagination.nextPageToken) ? '&pageToken=' + encodeURIComponent($json.pagination.nextPageToken) : '') }}",
         "authentication": "genericCredentialType",
         "genericAuthType": "oAuth2Api",
         "options": {}
@@ -34,7 +68,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const state = $('Configure Pagination').first().json;\nconst response = $input.first().json;\nconst pageSize = state.pageSize;\nconst maxMessages = state.maxMessages;\n\nconst messages = response.messages;\nif (messages === undefined) {\n  return [{\n    json: {\n      ...state,\n      pagination: {\n        ...state.pagination,\n        pagesFetched: state.pagination.pagesFetched + 1,\n        hasMorePages: false\n      },\n      apiRequests: state.apiRequests + 1\n    }\n  }];\n}\n\nif (!Array.isArray(messages)) {\n  throw new Error('Unexpected Gmail messages list format');\n}\n\nif (messages.length > pageSize) {\n  throw new Error('Gmail returned more messages than requested pageSize');\n}\n\nconst ids = new Set(state.pagination.messageIds);\nlet newIds = [];\nconst currentCount = state.pagination.messageIds.length;\n\nfor (const message of messages) {\n  if (typeof message.id !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(message.id)) {\n    throw new Error('Invalid Gmail message ID format');\n  }\n  if (!ids.has(message.id) && currentCount + newIds.length < maxMessages) {\n    newIds.push(message.id);\n    ids.add(message.id);\n  }\n}\n\nconst totalDiscovered = state.pagination.messagesDiscovered + messages.length;\nconst hasReachedLimit = (currentCount + newIds.length) >= maxMessages;\nconst nextPageToken = response.nextPageToken || null;\nconst hasMorePages = !hasReachedLimit && nextPageToken !== null && nextPageToken !== '';\n\nreturn [{\n  json: {\n    ...state,\n    pagination: {\n      nextPageToken: nextPageToken,\n      pagesFetched: state.pagination.pagesFetched + 1,\n      messagesDiscovered: totalDiscovered,\n      messageIds: [...state.pagination.messageIds, ...newIds],\n      hasMorePages\n    },\n    apiRequests: state.apiRequests + 1\n  }\n}];"
+        "jsCode": "const { pageState: state, pageResponse: response } = $input.first().json;\nif (!state?.pagination || !response) throw new Error('Missing pagination state or Gmail response in paired page item');\nconst pageSize = state.pageSize;\nconst maxMessages = state.maxMessages;\n\nconst messages = response.messages;\nif (messages === undefined) {\n  return [{\n    json: {\n      ...state,\n      pagination: {\n        ...state.pagination,\n        pagesFetched: state.pagination.pagesFetched + 1,\n        hasMorePages: false\n      },\n      apiRequests: state.apiRequests + 1\n    }\n  }];\n}\n\nif (!Array.isArray(messages)) {\n  throw new Error('Unexpected Gmail messages list format');\n}\n\nif (messages.length > pageSize) {\n  throw new Error('Gmail returned more messages than requested pageSize');\n}\n\nconst ids = new Set(state.pagination.messageIds);\nlet newIds = [];\nconst currentCount = state.pagination.messageIds.length;\n\nfor (const message of messages) {\n  if (typeof message.id !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(message.id)) {\n    throw new Error('Invalid Gmail message ID format');\n  }\n  if (!ids.has(message.id) && currentCount + newIds.length < maxMessages) {\n    newIds.push(message.id);\n    ids.add(message.id);\n  }\n}\n\nconst totalDiscovered = state.pagination.messagesDiscovered + messages.length;\nconst hasReachedLimit = (currentCount + newIds.length) >= maxMessages;\nconst nextPageToken = response.nextPageToken || null;\nconst hasMorePages = !hasReachedLimit && nextPageToken !== null && nextPageToken !== '';\n\nreturn [{\n  json: {\n    ...state,\n    pagination: {\n      nextPageToken: nextPageToken,\n      pagesFetched: state.pagination.pagesFetched + 1,\n      messagesDiscovered: totalDiscovered,\n      messageIds: [...state.pagination.messageIds, ...newIds],\n      hasMorePages\n    },\n    apiRequests: state.apiRequests + 1\n  }\n}];"
       },
       "id": "03b9f4f3-a42a-4a05-99d1-1b4a2ca1d004",
       "name": "Process Page Response",
@@ -102,8 +136,11 @@
   ],
   "connections": {
     "Manual Trigger": { "main": [[{ "node": "Configure Pagination", "type": "main", "index": 0 }]] },
-    "Configure Pagination": { "main": [[{ "node": "List Messages Page", "type": "main", "index": 0 }]] },
-    "List Messages Page": { "main": [[{ "node": "Process Page Response", "type": "main", "index": 0 }]] },
+    "Configure Pagination": { "main": [[{ "node": "Preserve Page State", "type": "main", "index": 0 }, { "node": "List Messages Page", "type": "main", "index": 0 }]] },
+    "Preserve Page State": { "main": [[{ "node": "Pair Page State and Response", "type": "main", "index": 0 }]] },
+    "List Messages Page": { "main": [[{ "node": "Wrap Page Response", "type": "main", "index": 0 }]] },
+    "Wrap Page Response": { "main": [[{ "node": "Pair Page State and Response", "type": "main", "index": 1 }]] },
+    "Pair Page State and Response": { "main": [[{ "node": "Process Page Response", "type": "main", "index": 0 }]] },
     "Process Page Response": { "main": [[{ "node": "Has More Pages", "type": "main", "index": 0 }]] },
     "Has More Pages": {
       "main": [
@@ -111,7 +148,7 @@
         [{ "node": "Prepare Metadata Requests", "type": "main", "index": 0 }]
       ]
     },
-    "Rate Limit Delay": { "main": [[{ "node": "List Messages Page", "type": "main", "index": 0 }]] },
+    "Rate Limit Delay": { "main": [[{ "node": "Preserve Page State", "type": "main", "index": 0 }, { "node": "List Messages Page", "type": "main", "index": 0 }]] },
     "Get Message Metadata": { "main": [[{ "node": "Sender Inventory Report", "type": "main", "index": 0 }]] },
     "Prepare Metadata Requests": { "main": [[{ "node": "Get Message Metadata", "type": "main", "index": 0 }]] }
   },

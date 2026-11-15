@@ -8,6 +8,11 @@ variant has an unsafe state-threading assumption documented in the
 [critical review](PHASE-1D-CRITICAL-REVIEW-FINDINGS.md). Keep them inactive;
 do not import or execute them. The steps below are historical guidance.
 
+The original export now pairs each list response with the state supplied to
+that request, preserving accumulated IDs across pages. This correction does
+not address the other legacy limitations or make the export an approved
+candidate; use the item-state workflow for the newer design.
+
 The [workflow definition](../workflows/03-gmail-paginated-inventory.json)
 is a manual, inactive, unbound prototype that extends the bounded inventory
 with full Gmail pagination, explicit rate limiting, and configurable parameters.
