@@ -1,0 +1,159 @@
+{
+  "name": "09 - Mailflow Historical Multi-Page (MANUAL - INACTIVE)",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "09b00000-0000-4000-8000-000000000001",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const { createHistoricalState, openHistoricalForN8n } = require('mailflow-pipeline');\nconst ingestionId = '';\nconst accountKey = '';\nconst query = '';\nconst pageSize = 25;\nconst maxMessages = 100;\nconst config = { ingestionId, accountKey, query, pageSize, maxMessages };\ncreateHistoricalState(config);\nreturn [{ json: await openHistoricalForN8n(config) }];"
+      },
+      "id": "09b00000-0000-4000-8000-000000000002",
+      "name": "Configure Ingestion",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [220, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [{ "value1": "={{ $json.hasMore }}", "operation": "equal", "value2": true }]
+        }
+      },
+      "id": "09b00000-0000-4000-8000-000000000003",
+      "name": "Has Pending Page",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [440, 0]
+    },
+    {
+      "parameters": {
+        "source": "parameter",
+        "workflowJson": "",
+        "options": { "waitForSubWorkflow": true }
+      },
+      "id": "09b00000-0000-4000-8000-000000000004",
+      "name": "Run One Page",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [660, -100]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const items = $input.all();\nif (items.length !== 1) throw new Error(`Expected one page request, got ${items.length}`);\nreturn [{ json: { requestState: items[0].json } }];"
+      },
+      "id": "09b00000-0000-4000-8000-000000000010",
+      "name": "Preserve Page Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [660, -300]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const items = $input.all();\nif (items.length !== 1) throw new Error(`Expected one page reply, got ${items.length}`);\nreturn [{ json: { page: items[0].json } }];"
+      },
+      "id": "09b00000-0000-4000-8000-000000000011",
+      "name": "Wrap Page Reply",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [880, -100]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": { "includeUnpaired": false }
+      },
+      "id": "09b00000-0000-4000-8000-000000000012",
+      "name": "Pair Page Request and Reply",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [1100, -180]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const { historicalLoopResult, historicalFinalReport } = require('mailflow-pipeline');\nconst items = $input.all();\nif (items.length !== 1) throw new Error(`Expected one paired page reply, got ${items.length}`);\nconst { requestState, page } = items[0].json;\nfunction sameValue(a, b) {\n  if (a === b) return true;\n  if (!a || !b || typeof a !== 'object' || typeof b !== 'object' || Array.isArray(a) !== Array.isArray(b)) return false;\n  const aKeys = Object.keys(a).sort();\n  const bKeys = Object.keys(b).sort();\n  return aKeys.length === bKeys.length && aKeys.every((key, index) => key === bKeys[index] && sameValue(a[key], b[key]));\n}\nif (!requestState || !page || !sameValue(requestState, page.previous)) throw new Error('Page reply does not match the parent request state');\nif (page.stopReason) return [{ json: { continue: false, report: historicalFinalReport(requestState, page.stopReason) } }];\nreturn [{ json: historicalLoopResult(requestState, page) }];"
+      },
+      "id": "09b00000-0000-4000-8000-000000000005",
+      "name": "Check Page Progress",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [880, -100]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [{ "value1": "={{ $json.continue }}", "operation": "equal", "value2": true }]
+        }
+      },
+      "id": "09b00000-0000-4000-8000-000000000006",
+      "name": "Continue Ingestion",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1100, -100]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "return [{ json: $input.first().json.state }];"
+      },
+      "id": "09b00000-0000-4000-8000-000000000007",
+      "name": "Next Page State",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1320, -220]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "return [{ json: $input.first().json.report }];"
+      },
+      "id": "09b00000-0000-4000-8000-000000000008",
+      "name": "Final Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1320, 40]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const { historicalFinalReport } = require('mailflow-pipeline');\nreturn [{ json: historicalFinalReport($input.first().json) }];"
+      },
+      "id": "09b00000-0000-4000-8000-000000000009",
+      "name": "Already Complete Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [660, 160]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": { "main": [[{ "node": "Configure Ingestion", "type": "main", "index": 0 }]] },
+    "Configure Ingestion": { "main": [[{ "node": "Has Pending Page", "type": "main", "index": 0 }]] },
+    "Has Pending Page": { "main": [[{ "node": "Preserve Page Request", "type": "main", "index": 0 }, { "node": "Run One Page", "type": "main", "index": 0 }], [{ "node": "Already Complete Report", "type": "main", "index": 0 }]] },
+    "Preserve Page Request": { "main": [[{ "node": "Pair Page Request and Reply", "type": "main", "index": 0 }]] },
+    "Run One Page": { "main": [[{ "node": "Wrap Page Reply", "type": "main", "index": 0 }]] },
+    "Wrap Page Reply": { "main": [[{ "node": "Pair Page Request and Reply", "type": "main", "index": 1 }]] },
+    "Pair Page Request and Reply": { "main": [[{ "node": "Check Page Progress", "type": "main", "index": 0 }]] },
+    "Check Page Progress": { "main": [[{ "node": "Continue Ingestion", "type": "main", "index": 0 }]] },
+    "Continue Ingestion": { "main": [[{ "node": "Next Page State", "type": "main", "index": 0 }], [{ "node": "Final Report", "type": "main", "index": 0 }]] },
+    "Next Page State": { "main": [[{ "node": "Preserve Page Request", "type": "main", "index": 0 }, { "node": "Run One Page", "type": "main", "index": 0 }]] }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "none",
+    "saveDataSuccessExecution": "none",
+    "saveManualExecutions": false,
+    "saveExecutionProgress": false
+  },
+  "active": false,
+  "pinData": {}
+}

@@ -52,6 +52,9 @@ further live use needs approval.
 An inactive [historical ingestion candidate](docs/historical-ingestion.md)
 adds bounded pagination and checkpointed recovery, verified with synthetic data
 and a separately approved bounded live run; further live use requires approval.
+A separate inactive [automatic multi-page candidate](docs/historical-multi-page.md)
+extends checkpointed ingestion within one manual execution; it requires local
+configuration and separate approval before live use.
 
 The following are **planned, not implemented**:
 
@@ -131,6 +134,7 @@ implemented features.
 - [PostgreSQL persistence foundation](docs/postgres-persistence.md)
 - [Live Gmail persistence integration](docs/live-persistence.md)
 - [Bounded historical ingestion](docs/historical-ingestion.md)
+- [Automatic multi-page historical ingestion](docs/historical-multi-page.md)
 - [Architecture and data flows](docs/architecture.md)
 - [Safety model](docs/safety-rules.md)
 - [Extensibility and future deployment](docs/extensibility.md)
