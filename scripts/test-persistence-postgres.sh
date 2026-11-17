@@ -2,6 +2,7 @@
 set -eu
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+mkdir -p "$root/coverage/postgres"
 db_id=
 client_id=
 cleanup() {
@@ -54,12 +55,27 @@ docker cp "$root/tests/integration/persistence-postgres.cjs" "$client_id:/tmp/ma
 docker cp "$root/tests/integration/live-persistence-postgres.cjs" "$client_id:/tmp/mailflow-test/tests/integration/live-persistence-postgres.cjs"
 docker cp "$root/tests/integration/historical-ingestion-postgres.cjs" "$client_id:/tmp/mailflow-test/tests/integration/historical-ingestion-postgres.cjs"
 docker cp "$root/tests/integration/versioned-persistence-postgres.cjs" "$client_id:/tmp/mailflow-test/tests/integration/versioned-persistence-postgres.cjs"
-docker exec -e NODE_PATH=/usr/local/lib/node_modules/n8n/node_modules "$client_id" \
-  node --test /tmp/mailflow-test/tests/integration/persistence-postgres.cjs
-docker exec -e NODE_PATH=/usr/local/lib/node_modules/n8n/node_modules "$client_id" \
-  node --test /tmp/mailflow-test/tests/integration/live-persistence-postgres.cjs
-docker exec -e NODE_PATH=/usr/local/lib/node_modules/n8n/node_modules "$client_id" \
-  node --test /tmp/mailflow-test/tests/integration/historical-ingestion-postgres.cjs
-docker exec -e NODE_PATH=/usr/local/lib/node_modules/n8n/node_modules "$client_id" \
-  node --test /tmp/mailflow-test/tests/integration/versioned-persistence-postgres.cjs
+
+test_failures=0
+run_integration() {
+  suite=$1
+  file=$2
+  if docker exec -e NODE_PATH=/usr/local/lib/node_modules/n8n/node_modules "$client_id" \
+    node --test --test-reporter=tap "/tmp/mailflow-test/tests/integration/$file" \
+    > "$root/coverage/postgres/$suite.tap" 2>&1; then
+    cat "$root/coverage/postgres/$suite.tap"
+  else
+    result=$?
+    cat "$root/coverage/postgres/$suite.tap"
+    test_failures=1
+    return "$result"
+  fi
+}
+
+run_integration persistence-postgres persistence-postgres.cjs || true
+run_integration live-persistence-postgres live-persistence-postgres.cjs || true
+run_integration historical-ingestion-postgres historical-ingestion-postgres.cjs || true
+run_integration versioned-persistence-postgres versioned-persistence-postgres.cjs || true
+if [ "$test_failures" -ne 0 ]; then exit 1; fi
+
 docker exec -i "$db_id" psql -X -v ON_ERROR_STOP=1 -U mailflow_test_app -d postgres < "$root/sql/persistence-reports.sql"

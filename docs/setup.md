@@ -69,10 +69,17 @@ the working tree. Stage the implementation and tests together; unstaged
 changes can otherwise affect test results.
 Git does not install hooks automatically, and `--no-verify` or changes to
 `core.hooksPath` can bypass them. Reinstall after a fresh clone and use CI as
-the independent gate. Pull requests targeting `develop` run `npm ci`, `npm run verify`, and an
-isolated PostgreSQL persistence integration test. CI pulls its test images;
-the local offline verification above does not contact Gmail or require n8n,
-containers, or a database.
+the independent gate. Pull requests targeting `develop` run `npm ci`, the
+same formatting, lint, repository validation, and synthetic-test checks as
+`npm run verify`, plus an isolated PostgreSQL persistence integration test.
+CI pulls its test images; the local offline verification above does not
+contact Gmail or require n8n, containers, or a database.
+The workflow Summary page publishes per-suite results, informational overall
+and per-module coverage and complexity, and quality-gate outcomes. E2E is
+reported as not configured. A versioned `engineering-quality-metrics-v1`
+artifact contains the run identity, suite results, coverage, per-function
+complexity, and gate outcomes; GitHub's default artifact retention applies.
+Coverage and complexity remain informational, with no added thresholds.
 See [persistence testing](postgres-persistence.md#provisioning-and-migration-after-approval)
 for the separate optional local database test. Run `npm run verify:postgres`
 only with explicit approval: it creates and removes disposable containers.
