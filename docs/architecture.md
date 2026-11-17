@@ -169,7 +169,9 @@ them.
 
 ## Decisions and tradeoffs
 
-See the [ADR index](adr/README.md) for recorded architectural decisions.
+See the [ADR index](adr/README.md) for recorded decisions, including
+[application database isolation (ADR-0002)](adr/0002-application-database-isolation.md)
+and [processing and policy boundaries (ADR-0003)](adr/0003-processing-and-policy-boundaries.md).
 
 - **n8n instead of custom orchestration:** visual workflows and existing
   integrations accelerate development, but require careful versioning,

@@ -21,3 +21,5 @@ the full design documentation.
 ## Records
 
 - [0001 — n8n workflow orchestration](0001-n8n-workflow-orchestration.md)
+- [0002 — Application database isolation](0002-application-database-isolation.md)
+- [0003 — Processing, classification, and policy boundaries](0003-processing-and-policy-boundaries.md)
