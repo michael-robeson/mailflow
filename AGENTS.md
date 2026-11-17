@@ -34,6 +34,9 @@ current provider integration. This repository does not use .NET Aspire.
 - `config/` — currently empty placeholders, not loaded runtime rules.
 - `tests/` — offline synthetic tests and separate integration tests.
 - `scripts/` — validation, hook setup, and opt-in database test utilities.
+- `.github/skills/feature-lifecycle/SKILL.md` — reusable feature branch, PR,
+  merge, cleanup, and next-branch procedure; follow it for feature lifecycle
+  work.
 - `.github/skills/verify-workflow/SKILL.md` — reusable workflow verification
   procedure; use synthetic data and distinguish simulation from actual n8n
   behavior.
@@ -100,8 +103,14 @@ Follow those documents for detailed procedures; do not duplicate them here.
   `npm ci` installs only the pinned development tools; the root manifest
   introduces no application runtime dependencies. `npm run verify` checks
   formatting, runs ESLint and the repository validator, and runs synthetic
-  tests. ESLint complexity warnings are informational and use its default
-  threshold; do not set custom limits or refactor solely to reduce metrics.
+  tests with Node's built-in coverage report. The report includes only
+  maintained modules under `lib/`, not tests, scripts, fixtures, generated
+  artifacts, or n8n workflow exports. Line, branch, and function percentages
+  are informational; there are no coverage thresholds. Run `npm run coverage`
+  to display the report and the existing ESLint complexity warnings without
+  running formatting or repository validation. Complexity warnings remain
+  informational and use ESLint's default threshold; do not set custom limits
+  or refactor solely to reduce metrics.
   Verification does not contact Gmail or require n8n, containers, or a
   database. The PostgreSQL integration test uses disposable containers and is
   separate. Run

@@ -21,7 +21,7 @@ jobs:
           node-version: '22'
       - name: Install quality-gate dependencies
         run: npm ci
-      - name: Run offline quality verification
+      - name: Run offline quality verification and coverage
         run: npm run verify
 
   postgres-persistence:
