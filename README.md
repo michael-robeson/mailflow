@@ -95,12 +95,16 @@ The workflow must be imported and its credential bound locally.
 
 ## Quality gates
 
-Run `npm run verify` for offline validation and synthetic tests. The
-approval-required local PostgreSQL integration is available as
-`npm run verify:postgres`. Pull requests targeting `develop` run both commands,
-including the isolated disposable PostgreSQL test.
-Install the local pre-commit hook and run the same checks as described in
-[local validation](docs/setup.md#local-validation-and-git-hooks).
+Run `npm ci` to install the pinned development tools, then `npm run verify` for
+format verification, ESLint, repository validation, and synthetic tests.
+Complexity warnings are informational and use ESLint's default threshold.
+`npm run format:check` and `npm run lint` run the non-mutating checks
+individually; `npm run format` and `npm run lint:fix` apply fixes to maintained
+CommonJS code. The root manifest introduces no application runtime
+dependencies. The approval-required local PostgreSQL integration is available
+as `npm run verify:postgres`. Pull requests targeting `develop` run the
+canonical checks and the isolated disposable PostgreSQL test. Install the
+local pre-commit hook and see [local validation](docs/setup.md#local-validation-and-git-hooks).
 
 ## Project roadmap
 

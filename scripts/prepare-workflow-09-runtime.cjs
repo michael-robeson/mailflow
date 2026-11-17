@@ -22,19 +22,21 @@ function replaceExactlyOnce(source, before, after, label) {
 }
 
 function configureWorkflows({ ingestionId, accountKey }) {
-  if (typeof ingestionId !== 'string' ||
-      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(ingestionId)) {
+  if (
+    typeof ingestionId !== 'string' ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(ingestionId)
+  ) {
     throw new Error('Invalid synthetic ingestion UUID');
   }
   if (typeof accountKey !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(accountKey)) {
     throw new Error('Invalid synthetic account key');
   }
-  const parent = JSON.parse(fs.readFileSync(
-    path.join(ROOT, 'workflows/09-mailflow-historical-multi-page.json'), 'utf8',
-  ));
-  const child = JSON.parse(fs.readFileSync(
-    path.join(ROOT, 'workflows/09-mailflow-historical-one-page.json'), 'utf8',
-  ));
+  const parent = JSON.parse(
+    fs.readFileSync(path.join(ROOT, 'workflows/09-mailflow-historical-multi-page.json'), 'utf8'),
+  );
+  const child = JSON.parse(
+    fs.readFileSync(path.join(ROOT, 'workflows/09-mailflow-historical-one-page.json'), 'utf8'),
+  );
 
   const listNode = child.nodes.find((node) => node.name === 'List Gmail Page');
   const messageNode = child.nodes.find((node) => node.name === 'Get Full Gmail Message');
@@ -42,8 +44,10 @@ function configureWorkflows({ ingestionId, accountKey }) {
   if (!listNode || !messageNode || !persistNode) {
     throw new Error('Workflow 09 child nodes were not found');
   }
-  listNode.parameters.url = "={{ 'http://w09-gmail-mock:8080/gmail/v1/users/me/messages?maxResults=' + Math.min($json.pageSize, $json.maxMessages - $json.discovered) + '&fields=messages%28id%29,nextPageToken' + ($json.query ? '&q=' + encodeURIComponent($json.query) : '') + ($json.nextPageToken ? '&pageToken=' + encodeURIComponent($json.nextPageToken) : '') }}";
-  messageNode.parameters.url = "={{ 'http://w09-gmail-mock:8080/gmail/v1/users/me/messages/' + encodeURIComponent($json.id) + '?format=full' }}";
+  listNode.parameters.url =
+    "={{ 'http://w09-gmail-mock:8080/gmail/v1/users/me/messages?maxResults=' + Math.min($json.pageSize, $json.maxMessages - $json.discovered) + '&fields=messages%28id%29,nextPageToken' + ($json.query ? '&q=' + encodeURIComponent($json.query) : '') + ($json.nextPageToken ? '&pageToken=' + encodeURIComponent($json.nextPageToken) : '') }}";
+  messageNode.parameters.url =
+    "={{ 'http://w09-gmail-mock:8080/gmail/v1/users/me/messages/' + encodeURIComponent($json.id) + '?format=full' }}";
 
   for (const node of [listNode, messageNode]) {
     delete node.parameters.authentication;
@@ -51,28 +55,31 @@ function configureWorkflows({ ingestionId, accountKey }) {
     delete node.credentials;
   }
 
-  child.nodes.push({
-    parameters: {
-      method: 'GET',
-      url: "={{ 'http://w09-gmail-mock:8080/checkpoint?pageNumber=' + $json.state.pages }}",
-      options: {},
+  child.nodes.push(
+    {
+      parameters: {
+        method: 'GET',
+        url: "={{ 'http://w09-gmail-mock:8080/checkpoint?pageNumber=' + $json.state.pages }}",
+        options: {},
+      },
+      id: '09b10000-0000-4000-8000-000000000012',
+      name: 'Record Page Checkpoint',
+      type: 'n8n-nodes-base.httpRequest',
+      typeVersion: 4.2,
+      position: [1760, 0],
     },
-    id: '09b10000-0000-4000-8000-000000000012',
-    name: 'Record Page Checkpoint',
-    type: 'n8n-nodes-base.httpRequest',
-    typeVersion: 4.2,
-    position: [1760, 0],
-  }, {
-    parameters: {
-      mode: 'runOnceForAllItems',
-      jsCode: "return [{ json: $('Process and Persist Page').first().json }];",
+    {
+      parameters: {
+        mode: 'runOnceForAllItems',
+        jsCode: "return [{ json: $('Process and Persist Page').first().json }];",
+      },
+      id: '09b10000-0000-4000-8000-000000000013',
+      name: 'Return Persisted Page',
+      type: 'n8n-nodes-base.code',
+      typeVersion: 2,
+      position: [1980, 0],
     },
-    id: '09b10000-0000-4000-8000-000000000013',
-    name: 'Return Persisted Page',
-    type: 'n8n-nodes-base.code',
-    typeVersion: 2,
-    position: [1980, 0],
-  });
+  );
   child.connections['Process and Persist Page'] = {
     main: [[{ node: 'Record Page Checkpoint', type: 'main', index: 0 }]],
   };
@@ -82,12 +89,28 @@ function configureWorkflows({ ingestionId, accountKey }) {
 
   const configureNode = parent.nodes.find((node) => node.name === 'Configure Ingestion');
   const callNode = parent.nodes.find((node) => node.name === 'Run One Page');
-  if (!configureNode || !callNode) throw new Error('Workflow 09 parent configuration nodes were not found');
+  if (!configureNode || !callNode)
+    throw new Error('Workflow 09 parent configuration nodes were not found');
   let code = configureNode.parameters.jsCode;
-  code = replaceExactlyOnce(code, "const ingestionId = '';", `const ingestionId = '${ingestionId}';`, 'ingestion UUID');
-  code = replaceExactlyOnce(code, "const accountKey = '';", `const accountKey = '${accountKey}';`, 'account key');
+  code = replaceExactlyOnce(
+    code,
+    "const ingestionId = '';",
+    `const ingestionId = '${ingestionId}';`,
+    'ingestion UUID',
+  );
+  code = replaceExactlyOnce(
+    code,
+    "const accountKey = '';",
+    `const accountKey = '${accountKey}';`,
+    'account key',
+  );
   code = replaceExactlyOnce(code, 'const pageSize = 25;', 'const pageSize = 2;', 'page size');
-  code = replaceExactlyOnce(code, 'const maxMessages = 100;', 'const maxMessages = 10;', 'message maximum');
+  code = replaceExactlyOnce(
+    code,
+    'const maxMessages = 100;',
+    'const maxMessages = 10;',
+    'message maximum',
+  );
   configureNode.parameters.jsCode = code;
 
   parent.name = '09 - Mailflow Historical Multi-Page (SYNTHETIC TEST COPY)';
@@ -189,14 +212,17 @@ function prepareRuntime() {
 
     writeFile(path.join(runtimeDir, 'app-secret/app-password'), appPassword);
 
-    writeFile(path.join(runtimeDir, 'app-bootstrap.sql'), [
-      `CREATE ROLE mailflow_owner LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD '${ownerPassword}';`,
-      `CREATE ROLE mailflow_app LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD '${appPassword}';`,
-      'ALTER DATABASE mailflow OWNER TO mailflow_owner;',
-      'REVOKE ALL ON DATABASE mailflow FROM PUBLIC;',
-      'GRANT CONNECT ON DATABASE mailflow TO mailflow_app;',
-      '',
-    ].join('\n'));
+    writeFile(
+      path.join(runtimeDir, 'app-bootstrap.sql'),
+      [
+        `CREATE ROLE mailflow_owner LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD '${ownerPassword}';`,
+        `CREATE ROLE mailflow_app LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD '${appPassword}';`,
+        'ALTER DATABASE mailflow OWNER TO mailflow_owner;',
+        'REVOKE ALL ON DATABASE mailflow FROM PUBLIC;',
+        'GRANT CONNECT ON DATABASE mailflow TO mailflow_app;',
+        '',
+      ].join('\n'),
+    );
 
     const runtimeEnv = {
       W09_RUNTIME_DIR: runtimeDir,
@@ -206,18 +232,32 @@ function prepareRuntime() {
       W09_APP_DB_ADMIN_PASSWORD: crypto.randomBytes(32).toString('hex'),
       W09_N8N_ENCRYPTION_KEY: crypto.randomBytes(32).toString('hex'),
     };
-    writeFile(path.join(runtimeDir, 'compose.env'), `${Object.entries(runtimeEnv)
-      .map(([key, value]) => `${key}=${value}`).join('\n')}\n`);
+    writeFile(
+      path.join(runtimeDir, 'compose.env'),
+      `${Object.entries(runtimeEnv)
+        .map(([key, value]) => `${key}=${value}`)
+        .join('\n')}\n`,
+    );
 
-    for (const filename of fs.readdirSync(path.join(ROOT, 'lib')).filter((name) => name.endsWith('.cjs'))) {
+    for (const filename of fs
+      .readdirSync(path.join(ROOT, 'lib'))
+      .filter((name) => name.endsWith('.cjs'))) {
       fs.copyFileSync(path.join(ROOT, 'lib', filename), path.join(runtimeDir, 'package', filename));
     }
-    writeFile(path.join(runtimeDir, 'package/package.json'), JSON.stringify({
-      name: 'mailflow-pipeline',
-      version: '1.0.0',
-      private: true,
-      main: 'index.cjs',
-    }, null, 2) + '\n', 0o644);
+    writeFile(
+      path.join(runtimeDir, 'package/package.json'),
+      JSON.stringify(
+        {
+          name: 'mailflow-pipeline',
+          version: '1.0.0',
+          private: true,
+          main: 'index.cjs',
+        },
+        null,
+        2,
+      ) + '\n',
+      0o644,
+    );
 
     for (const filename of ['001_persistence_foundation.sql', '002_historical_ingestion.sql']) {
       fs.copyFileSync(
@@ -231,20 +271,48 @@ function prepareRuntime() {
     );
 
     const { parent, child } = configureWorkflows({ ingestionId, accountKey });
-    writeFile(path.join(runtimeDir, 'workflows/parent.json'), `${JSON.stringify(parent, null, 2)}\n`, 0o600);
-    writeFile(path.join(runtimeDir, 'workflows/child.json'), `${JSON.stringify(child, null, 2)}\n`, 0o600);
-    writeFile(path.join(runtimeDir, 'verify-success.sql'), createVerificationSql({ ingestionId, accountKey }));
-    writeFile(path.join(runtimeDir, 'scenario.json'), `${JSON.stringify({
-      ingestionId, accountKey, pageSize: 2, maxMessages: 10,
-    }, null, 2)}\n`);
-    writeFile(path.join(runtimeDir, '.mailflow-w09-runtime'), JSON.stringify({
-      version: 1, projectName,
-    }) + '\n');
-    writeFile(path.join(runtimeDir, 'runtime-paths.sh'), [
-      `export W09_RUNTIME_DIR=${shellQuote(runtimeDir)}`,
-      `export W09_PROJECT=${shellQuote(projectName)}`,
-      '',
-    ].join('\n'));
+    writeFile(
+      path.join(runtimeDir, 'workflows/parent.json'),
+      `${JSON.stringify(parent, null, 2)}\n`,
+      0o600,
+    );
+    writeFile(
+      path.join(runtimeDir, 'workflows/child.json'),
+      `${JSON.stringify(child, null, 2)}\n`,
+      0o600,
+    );
+    writeFile(
+      path.join(runtimeDir, 'verify-success.sql'),
+      createVerificationSql({ ingestionId, accountKey }),
+    );
+    writeFile(
+      path.join(runtimeDir, 'scenario.json'),
+      `${JSON.stringify(
+        {
+          ingestionId,
+          accountKey,
+          pageSize: 2,
+          maxMessages: 10,
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    writeFile(
+      path.join(runtimeDir, '.mailflow-w09-runtime'),
+      JSON.stringify({
+        version: 1,
+        projectName,
+      }) + '\n',
+    );
+    writeFile(
+      path.join(runtimeDir, 'runtime-paths.sh'),
+      [
+        `export W09_RUNTIME_DIR=${shellQuote(runtimeDir)}`,
+        `export W09_PROJECT=${shellQuote(projectName)}`,
+        '',
+      ].join('\n'),
+    );
 
     return { runtimeDir, projectName };
   } catch (error) {
@@ -283,11 +351,14 @@ function cleanupRuntime(runtimeDir, confirmed) {
 
 if (require.main === module) {
   try {
-    if (process.argv.length !== 2) throw new Error('Usage: node scripts/prepare-workflow-09-runtime.cjs');
+    if (process.argv.length !== 2)
+      throw new Error('Usage: node scripts/prepare-workflow-09-runtime.cjs');
     const { runtimeDir, projectName } = prepareRuntime();
     console.log(`Prepared isolated runtime assets: ${runtimeDir}`);
     console.log(`Compose project: ${projectName}`);
-    console.log(`After review, load non-secret paths with: . ${path.join(runtimeDir, 'runtime-paths.sh')}`);
+    console.log(
+      `After review, load non-secret paths with: . ${path.join(runtimeDir, 'runtime-paths.sh')}`,
+    );
     console.log('No containers or databases were started or accessed.');
   } catch (error) {
     console.error(`Workflow 09 runtime preparation failed: ${error.message}`);

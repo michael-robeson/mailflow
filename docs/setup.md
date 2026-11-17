@@ -10,7 +10,7 @@
 | OpenSSL | Required for the secret-generation command below. |
 | Google account with Gmail and Google Cloud Console access | Required for the optional Phase 1B Gmail test, not for starting the local services. |
 | Gmail API and OAuth 2.0 web client | Required for the Gmail test; set these up in Google Cloud as described in [Gmail setup](gmail-read-only.md). |
-| Node.js 22 and npm | Required for local quality checks and the pre-commit hook; no npm packages need to be installed. |
+| Node.js 22.13+ and npm | Required for local quality checks and the pre-commit hook; run `npm ci` to install the pinned development tools. |
 
 The local foundation is Phase 1A. Historical notes report a local manual
 read-only connectivity test; the supplied definition remains unbound and
@@ -20,13 +20,20 @@ treat authorization on one installation as authorization for another.
 
 ## Local validation and Git hooks
 
-Run the canonical offline verification command from the repository root in
-Fish or Bash. It uses Node.js and Git; it does not contact Gmail or require
-n8n, Docker, or a database:
+From the repository root, install the pinned development tools and run the
+canonical offline verification command in Fish or Bash:
 
 ```sh
+npm ci
 npm run verify
 ```
+
+The root manifest contains no application runtime dependencies. Verification
+checks formatting, runs ESLint and the repository validator, and runs
+synthetic tests; ESLint complexity warnings are informational and use its
+default threshold. Run `npm run format:check` or `npm run lint` for either
+non-mutating static check alone. `npm run format` and `npm run lint:fix`
+modify maintained CommonJS source, tests, and scripts.
 
 The validator scans tracked and non-ignored untracked files, checks workflow
 JSON for syntax and duplicate decoded object keys, and checks workflow safety.
@@ -46,10 +53,10 @@ the working tree. Stage the implementation and tests together; unstaged
 changes can otherwise affect test results.
 Git does not install hooks automatically, and `--no-verify` or changes to
 `core.hooksPath` can bypass them. Reinstall after a fresh clone and use CI as
-the independent gate. Pull requests targeting `develop` run `npm run verify`
-and an isolated PostgreSQL persistence integration test. CI pulls its test
-images; the local offline command above requires neither containers nor a
-database.
+the independent gate. Pull requests targeting `develop` run `npm ci`, `npm run verify`, and an
+isolated PostgreSQL persistence integration test. CI pulls its test images;
+the local offline verification above does not contact Gmail or require n8n,
+containers, or a database.
 See [persistence testing](postgres-persistence.md#provisioning-and-migration-after-approval)
 for the separate optional local database test. Run `npm run verify:postgres`
 only with explicit approval: it creates and removes disposable containers.

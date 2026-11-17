@@ -1,0 +1,17 @@
+node_modules/
+coverage/
+dist/
+build/
+workflows/
+**/.env
+**/.env.*
+!.env.example
+**/credentials/**
+**/secrets/**
+**/.n8n/**
+**/*.pem
+**/*.key
+**/*.p12
+**/*.pfx
+**/*.log
+docs/mailflow.code-workspace

@@ -14,11 +14,12 @@ function createServer({ onEvent = (event) => console.log(JSON.stringify(event)) 
   let sequence = 0;
   let listPagesServed = 0;
   const checkpointPages = new Set();
-  const record = (event) => onEvent({
-    sequence: ++sequence,
-    receivedAtMs: Date.now(),
-    ...event,
-  });
+  const record = (event) =>
+    onEvent({
+      sequence: ++sequence,
+      receivedAtMs: Date.now(),
+      ...event,
+    });
 
   return http.createServer((request, response) => {
     const url = new URL(request.url, 'http://127.0.0.1');
@@ -29,24 +30,30 @@ function createServer({ onEvent = (event) => console.log(JSON.stringify(event)) 
 
     if (request.method === 'GET' && url.pathname === '/checkpoint') {
       const pageNumber = Number(url.searchParams.get('pageNumber'));
-      if (!Number.isInteger(pageNumber) || pageNumber !== checkpointPages.size + 1
-        || pageNumber > listPagesServed) {
+      if (
+        !Number.isInteger(pageNumber) ||
+        pageNumber !== checkpointPages.size + 1 ||
+        pageNumber > listPagesServed
+      ) {
         record({ type: 'rejected_checkpoint', pageNumber });
-        response.writeHead(400, { 'content-type': 'application/json' })
+        response
+          .writeHead(400, { 'content-type': 'application/json' })
           .end(JSON.stringify({ error: 'unexpected_checkpoint' }));
         return;
       }
 
       checkpointPages.add(pageNumber);
       record({ type: 'checkpoint', pageNumber });
-      response.writeHead(200, { 'content-type': 'application/json' })
+      response
+        .writeHead(200, { 'content-type': 'application/json' })
         .end(JSON.stringify({ accepted: true }));
       return;
     }
 
     if (request.method !== 'GET') {
       record({ type: 'rejected', method: request.method, path: url.pathname });
-      response.writeHead(405, { 'content-type': 'application/json' })
+      response
+        .writeHead(405, { 'content-type': 'application/json' })
         .end(JSON.stringify({ error: 'method_not_allowed' }));
       return;
     }
@@ -58,14 +65,16 @@ function createServer({ onEvent = (event) => console.log(JSON.stringify(event)) 
       const expectedToken = ['', 'w09_page_2', 'w09_page_3'][listPagesServed];
       if (!page || maxResults !== PAGE_SIZE || pageToken !== expectedToken) {
         record({ type: 'rejected_list', pageToken, maxResults });
-        response.writeHead(400, { 'content-type': 'application/json' })
+        response
+          .writeHead(400, { 'content-type': 'application/json' })
           .end(JSON.stringify({ error: 'unexpected_list_request' }));
         return;
       }
 
       if (checkpointPages.size !== listPagesServed) {
         record({ type: 'rejected_list_order', pageToken: pageToken || null });
-        response.writeHead(409, { 'content-type': 'application/json' })
+        response
+          .writeHead(409, { 'content-type': 'application/json' })
           .end(JSON.stringify({ error: 'checkpoint_required_before_next_page' }));
         return;
       }
@@ -83,7 +92,8 @@ function createServer({ onEvent = (event) => console.log(JSON.stringify(event)) 
       const messageId = messageMatch[1];
       if (!MESSAGE_IDS.has(messageId) || url.searchParams.get('format') !== 'full') {
         record({ type: 'rejected_message', messageId });
-        response.writeHead(404, { 'content-type': 'application/json' })
+        response
+          .writeHead(404, { 'content-type': 'application/json' })
           .end(JSON.stringify({ error: 'unexpected_message_request' }));
         return;
       }
@@ -102,7 +112,8 @@ function createServer({ onEvent = (event) => console.log(JSON.stringify(event)) 
     }
 
     record({ type: 'rejected', method: request.method, path: url.pathname });
-    response.writeHead(404, { 'content-type': 'application/json' })
+    response
+      .writeHead(404, { 'content-type': 'application/json' })
       .end(JSON.stringify({ error: 'not_found' }));
   });
 }

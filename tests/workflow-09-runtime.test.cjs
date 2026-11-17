@@ -7,10 +7,16 @@ const path = require('node:path');
 const test = require('node:test');
 const { workflowErrors, secretErrors } = require('../scripts/validate.cjs');
 const {
-  cleanupRuntime, configureWorkflows, createVerificationSql, prepareRuntime, resolveRuntimeDirectory,
+  cleanupRuntime,
+  configureWorkflows,
+  createVerificationSql,
+  prepareRuntime,
+  resolveRuntimeDirectory,
 } = require('../scripts/prepare-workflow-09-runtime.cjs');
 const {
-  assertProjectOwned, assertProjectUnused, resolveProject,
+  assertProjectOwned,
+  assertProjectUnused,
+  resolveProject,
 } = require('../scripts/verify-workflow-09-compose-project.cjs');
 const { createServer } = require('./runtime/workflow-09/gmail-fixture.cjs');
 
@@ -41,7 +47,10 @@ test('synthetic Gmail fixture serves the three pages and five full messages in o
     const response = await fetch(url);
     assert.equal(response.status, 200);
     const body = await response.json();
-    assert.deepEqual(body.messages.map(({ id }) => id), expectedIds[page]);
+    assert.deepEqual(
+      body.messages.map(({ id }) => id),
+      expectedIds[page],
+    );
     if (page < 2) assert.equal(body.nextPageToken, `w09_page_${page + 2}`);
     else assert.equal(Object.hasOwn(body, 'nextPageToken'), false);
 
@@ -51,26 +60,41 @@ test('synthetic Gmail fixture serves the three pages and five full messages in o
       const message = await detail.json();
       assert.equal(message.id, id);
       assert.equal(message.payload.headers[0].value, 'Job alert');
-      assert.equal(Buffer.from(message.payload.body.data, 'base64url').toString(),
-        'New jobs matching your preferences.');
+      assert.equal(
+        Buffer.from(message.payload.body.data, 'base64url').toString(),
+        'New jobs matching your preferences.',
+      );
     }
 
     const checkpoint = await fetch(`http://127.0.0.1:${port}/checkpoint?pageNumber=${page + 1}`);
     assert.equal(checkpoint.status, 200);
   }
 
-  assert.deepEqual(events.filter(({ type }) => type === 'list').map(({ pageToken }) => pageToken),
-    [null, 'w09_page_2', 'w09_page_3']);
-  assert.deepEqual(events.filter(({ type }) => ['list', 'checkpoint'].includes(type))
-    .map(({ type, pageToken, pageNumber }) => type === 'list'
-      ? `list:${pageToken ?? 'first'}` : `checkpoint:${pageNumber}`), [
-    'list:first', 'checkpoint:1',
-    'list:w09_page_2', 'checkpoint:2',
-    'list:w09_page_3', 'checkpoint:3',
-  ]);
+  assert.deepEqual(
+    events.filter(({ type }) => type === 'list').map(({ pageToken }) => pageToken),
+    [null, 'w09_page_2', 'w09_page_3'],
+  );
+  assert.deepEqual(
+    events
+      .filter(({ type }) => ['list', 'checkpoint'].includes(type))
+      .map(({ type, pageToken, pageNumber }) =>
+        type === 'list' ? `list:${pageToken ?? 'first'}` : `checkpoint:${pageNumber}`,
+      ),
+    [
+      'list:first',
+      'checkpoint:1',
+      'list:w09_page_2',
+      'checkpoint:2',
+      'list:w09_page_3',
+      'checkpoint:3',
+    ],
+  );
   assert.equal(events.filter(({ type }) => type === 'message').length, 5);
-  assert.ok(events.every(({ receivedAtMs, sequence }) =>
-    Number.isInteger(receivedAtMs) && Number.isInteger(sequence)));
+  assert.ok(
+    events.every(
+      ({ receivedAtMs, sequence }) => Number.isInteger(receivedAtMs) && Number.isInteger(sequence),
+    ),
+  );
 });
 
 test('synthetic Gmail fixture refuses a next page until the prior checkpoint marker', async (t) => {
@@ -102,20 +126,37 @@ test('temporary workflows preserve the child call, use only the local fixture, a
   assert.deepEqual(embeddedChild, child);
   assert.equal(embeddedChild.name, child.name);
   assert.equal(httpNodes.length, 3);
-  assert.ok(httpNodes.every((node) => node.parameters.method === 'GET'
-    && node.parameters.url.includes('http://w09-gmail-mock:8080/')));
+  assert.ok(
+    httpNodes.every(
+      (node) =>
+        node.parameters.method === 'GET' &&
+        node.parameters.url.includes('http://w09-gmail-mock:8080/'),
+    ),
+  );
   const probe = child.nodes.find((node) => node.name === 'Record Page Checkpoint');
   const returnPage = child.nodes.find((node) => node.name === 'Return Persisted Page');
-  assert.ok(child.connections['Process and Persist Page'].main[0]
-    .some(({ node }) => node === 'Record Page Checkpoint'));
-  assert.ok(child.connections['Record Page Checkpoint'].main[0]
-    .some(({ node }) => node === 'Return Persisted Page'));
+  assert.ok(
+    child.connections['Process and Persist Page'].main[0].some(
+      ({ node }) => node === 'Record Page Checkpoint',
+    ),
+  );
+  assert.ok(
+    child.connections['Record Page Checkpoint'].main[0].some(
+      ({ node }) => node === 'Return Persisted Page',
+    ),
+  );
   assert.match(probe.parameters.url, /checkpoint\?pageNumber=/);
   assert.match(returnPage.parameters.jsCode, /Process and Persist Page/);
-  assert.ok(httpNodes.every((node) => !node.parameters.authentication
-    && !node.parameters.genericAuthType && !node.credentials));
-  assert.doesNotMatch(JSON.stringify({ parent, child }),
-    /gmail\.googleapis\.com|oAuth2Api|"credentials"/i);
+  assert.ok(
+    httpNodes.every(
+      (node) =>
+        !node.parameters.authentication && !node.parameters.genericAuthType && !node.credentials,
+    ),
+  );
+  assert.doesNotMatch(
+    JSON.stringify({ parent, child }),
+    /gmail\.googleapis\.com|oAuth2Api|"credentials"/i,
+  );
   for (const workflow of [parent, child]) {
     assert.equal(workflow.settings.saveDataErrorExecution, 'none');
     assert.equal(workflow.settings.saveDataSuccessExecution, 'none');
@@ -127,7 +168,8 @@ test('temporary workflows preserve the child call, use only the local fixture, a
   assert.deepEqual(secretErrors('parent.json', JSON.stringify(parent)), []);
   assert.deepEqual(secretErrors('child.json', JSON.stringify(child)), []);
 
-  const configureCode = parent.nodes.find((node) => node.name === 'Configure Ingestion').parameters.jsCode;
+  const configureCode = parent.nodes.find((node) => node.name === 'Configure Ingestion').parameters
+    .jsCode;
   assert.match(configureCode, /const pageSize = 2/);
   assert.match(configureCode, /const maxMessages = 10/);
 });
@@ -166,8 +208,11 @@ test('runtime preparation keeps secrets and workflow copies in a private temp di
     assert.equal(fs.statSync(path.join(runtimeDir, filename)).mode & 0o777, 0o600, filename);
   }
   for (const filename of [
-    'compose.env', 'app-bootstrap.sql', 'app-secret/app-password',
-    'workflows/parent.json', 'workflows/child.json',
+    'compose.env',
+    'app-bootstrap.sql',
+    'app-secret/app-password',
+    'workflows/parent.json',
+    'workflows/child.json',
   ]) {
     const stat = fs.statSync(path.join(runtimeDir, filename));
     assert.equal(stat.uid, hostUid, filename);
@@ -185,12 +230,19 @@ test('runtime preparation keeps secrets and workflow copies in a private temp di
   assert.throws(() => cleanupRuntime(runtimeDir, false), /explicit --confirm/);
   assert.throws(() => resolveRuntimeDirectory(os.tmpdir()), /real directory|generated workflow 09/);
 
-  const parent = JSON.parse(fs.readFileSync(path.join(runtimeDir, 'workflows/parent.json'), 'utf8'));
+  const parent = JSON.parse(
+    fs.readFileSync(path.join(runtimeDir, 'workflows/parent.json'), 'utf8'),
+  );
   const child = JSON.parse(fs.readFileSync(path.join(runtimeDir, 'workflows/child.json'), 'utf8'));
-  assert.deepEqual(JSON.parse(parent.nodes.find((node) => node.name === 'Run One Page')
-    .parameters.workflowJson), child);
+  assert.deepEqual(
+    JSON.parse(parent.nodes.find((node) => node.name === 'Run One Page').parameters.workflowJson),
+    child,
+  );
   assert.equal(fs.existsSync(path.join(runtimeDir, 'package/index.cjs')), true);
-  assert.equal(fs.existsSync(path.join(runtimeDir, 'migrations/002_historical_ingestion.sql')), true);
+  assert.equal(
+    fs.existsSync(path.join(runtimeDir, 'migrations/002_historical_ingestion.sql')),
+    true,
+  );
 });
 
 test('Compose project guard rejects missing, mismatched, occupied, and foreign projects', (t) => {
@@ -208,12 +260,16 @@ test('Compose project guard rejects missing, mismatched, occupied, and foreign p
 
   assert.throws(() => resolveProject(runtimeDir, undefined), /Invalid workflow 09/);
   assert.throws(() => resolveProject(runtimeDir, 'not-a-project'), /Invalid workflow 09/);
-  assert.throws(() => resolveProject(runtimeDir, 'mailflow-w09-000000000000'),
-    /does not match the generated runtime marker/);
+  assert.throws(
+    () => resolveProject(runtimeDir, 'mailflow-w09-000000000000'),
+    /does not match the generated runtime marker/,
+  );
   assertProjectUnused(identity, emptyDocker);
   assert.equal(dockerCalls, 2);
-  assert.throws(() => assertProjectUnused(identity, () => 'existing-container'),
-    /already has Docker resources/);
+  assert.throws(
+    () => assertProjectUnused(identity, () => 'existing-container'),
+    /already has Docker resources/,
+  );
 
   const ownedDocker = (command, args) => {
     if (args[0] === 'ps') return 'container-1';
@@ -254,8 +310,10 @@ test('Compose project guard rejects missing, mismatched, occupied, and foreign p
     }
     throw new Error(`Unexpected Docker command: ${command} ${args.join(' ')}`);
   };
-  assert.throws(() => assertProjectOwned(identity, foreignDocker),
-    /not owned by this workflow 09 harness/);
+  assert.throws(
+    () => assertProjectOwned(identity, foreignDocker),
+    /not owned by this workflow 09 harness/,
+  );
 
   const wrongWorkingDirectoryDocker = (command, args) => {
     if (args[0] === 'ps' && args[1] === '-aq') return 'container-1';
@@ -271,8 +329,10 @@ test('Compose project guard rejects missing, mismatched, occupied, and foreign p
     }
     throw new Error(`Unexpected Docker command: ${command} ${args.join(' ')}`);
   };
-  assert.throws(() => assertProjectOwned(identity, wrongWorkingDirectoryDocker),
-    /not owned by this workflow 09 harness/);
+  assert.throws(
+    () => assertProjectOwned(identity, wrongWorkingDirectoryDocker),
+    /not owned by this workflow 09 harness/,
+  );
 });
 
 test('Compose runtime uses isolated internal networks and no named data volumes', () => {
@@ -280,19 +340,27 @@ test('Compose runtime uses isolated internal networks and no named data volumes'
   assert.equal((compose.match(/internal: true/g) ?? []).length, 2);
   assert.match(compose, /127\.0\.0\.1::5678/);
   assert.match(compose, /tmpfs:\s*\n\s+- \/var\/lib\/postgresql\/data/);
-  assert.match(compose,
-    /- \/home\/node\/\.n8n:uid=\$\{W09_RUNTIME_UID\},gid=\$\{W09_RUNTIME_GID\},mode=0700/);
+  assert.match(
+    compose,
+    /- \/home\/node\/\.n8n:uid=\$\{W09_RUNTIME_UID\},gid=\$\{W09_RUNTIME_GID\},mode=0700/,
+  );
   assert.doesNotMatch(compose, /^volumes:\s*$/m);
   assert.match(compose, /pull_policy: never/g);
-  assert.equal((compose.match(/user: "\$\{W09_RUNTIME_UID\}:\$\{W09_RUNTIME_GID\}"/g) ?? []).length, 2);
+  assert.equal(
+    (compose.match(/user: "\$\{W09_RUNTIME_UID\}:\$\{W09_RUNTIME_GID\}"/g) ?? []).length,
+    2,
+  );
   assert.match(compose, /N8N_RUNNERS_ENABLED: "true"/);
   assert.match(compose, /N8N_RUNNERS_MODE: internal/);
-  const runtimeBindMounts = compose.split('\n')
+  const runtimeBindMounts = compose
+    .split('\n')
     .map((line) => line.trim())
     .filter((line) => line.startsWith('- ${W09_RUNTIME_DIR'));
   assert.equal(runtimeBindMounts.length, 3);
-  assert.ok(runtimeBindMounts.every((mount) => mount.endsWith(':ro,z')),
-    'every read-only runtime staging bind mount must use shared SELinux relabeling');
+  assert.ok(
+    runtimeBindMounts.every((mount) => mount.endsWith(':ro,z')),
+    'every read-only runtime staging bind mount must use shared SELinux relabeling',
+  );
   assert.doesNotMatch(compose, /app-bootstrap\.sql:/);
   assert.doesNotMatch(compose, /user: "0:0"/);
   assert.doesNotMatch(compose, /gmail\.googleapis\.com/);

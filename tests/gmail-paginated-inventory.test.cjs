@@ -3,10 +3,9 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 
-const workflow = JSON.parse(fs.readFileSync(
-  path.join(__dirname, '../workflows/03-gmail-paginated-inventory.json'),
-  'utf8',
-));
+const workflow = JSON.parse(
+  fs.readFileSync(path.join(__dirname, '../workflows/03-gmail-paginated-inventory.json'), 'utf8'),
+);
 
 const node = (name) => {
   const result = workflow.nodes.find((entry) => entry.name === name);
@@ -25,32 +24,30 @@ const run = (name, input, config = {}) => {
       nextPageToken: null,
       pagesFetched: 0,
       messagesDiscovered: 0,
-      messageIds: []
+      messageIds: [],
     },
     apiRequests: 0,
     retryCount: 0,
-    errors: []
+    errors: [],
   };
   const state = { ...defaults, ...config };
-  const nodeInput = name === 'Process Page Response'
-    ? { first: () => ({ json: { pageState: state, pageResponse: input.first().json } }) }
-    : input;
-  return new Function('$input', '$', node(name).parameters.jsCode)(
-    nodeInput,
-    (name) => {
-      assert.equal(name, 'Configure Pagination');
-      return { first: () => ({ json: state }) };
-    },
-  );
+  const nodeInput =
+    name === 'Process Page Response'
+      ? { first: () => ({ json: { pageState: state, pageResponse: input.first().json } }) }
+      : input;
+  return new Function('$input', '$', node(name).parameters.jsCode)(nodeInput, (name) => {
+    assert.equal(name, 'Configure Pagination');
+    return { first: () => ({ json: state }) };
+  });
 };
 
 const listResponse = (messages, nextPageToken) => ({
   first: () => ({
     json: {
       messages: messages === undefined ? undefined : messages,
-      nextPageToken: nextPageToken || null
-    }
-  })
+      nextPageToken: nextPageToken || null,
+    },
+  }),
 });
 
 const metadata = (id, headers) => ({ json: { id, labelIds: ['INBOX'], payload: { headers } } });
@@ -70,21 +67,31 @@ test('workflow is manual, unbound, inactive, unpinned and disables execution sav
   assert.equal(workflow.nodes.filter((n) => n.type === 'n8n-nodes-base.manualTrigger').length, 1);
   assert.equal(workflow.nodes.filter((n) => n.type === 'n8n-nodes-base.httpRequest').length, 2);
   assert.ok(workflow.nodes.every((n) => !n.credentials));
-  assert.doesNotMatch(JSON.stringify(workflow), /access_token|refresh_token|client_secret|clientSecret/i);
+  assert.doesNotMatch(
+    JSON.stringify(workflow),
+    /access_token|refresh_token|client_secret|clientSecret/i,
+  );
 });
 
 test('configuration validates maxMessages, pageSize, requestDelayMs, maxRetries, retryBaseDelayMs', () => {
   const code = node('Configure Pagination').parameters.jsCode;
-  
+
   for (const [param, value] of [
-    ['maxMessages', '0'], ['maxMessages', '10001'],
-    ['pageSize', '0'], ['pageSize', '501'],
-    ['requestDelayMs', '-1'], ['requestDelayMs', '60001'],
-    ['maxRetries', '-1'], ['maxRetries', '11'],
-    ['retryBaseDelayMs', '-1'], ['retryBaseDelayMs', '60001'],
+    ['maxMessages', '0'],
+    ['maxMessages', '10001'],
+    ['pageSize', '0'],
+    ['pageSize', '501'],
+    ['requestDelayMs', '-1'],
+    ['requestDelayMs', '60001'],
+    ['maxRetries', '-1'],
+    ['maxRetries', '11'],
+    ['retryBaseDelayMs', '-1'],
+    ['retryBaseDelayMs', '60001'],
   ]) {
     const testCode = code.replace(`const ${param} = `, `const ${param} = `);
-    const fn = new Function(testCode.replace(new RegExp(`const ${param} = \\d+`), `const ${param} = ${value}`));
+    const fn = new Function(
+      testCode.replace(new RegExp(`const ${param} = \\d+`), `const ${param} = ${value}`),
+    );
     assert.throws(() => fn(), new RegExp(`${param}.*integer`));
   }
 });
@@ -100,7 +107,7 @@ test('configuration returns initial pagination state with all required fields', 
     nextPageToken: null,
     pagesFetched: 0,
     messagesDiscovered: 0,
-    messageIds: []
+    messageIds: [],
   });
   assert.equal(result.apiRequests, 0);
   assert.equal(result.retryCount, 0);
@@ -124,25 +131,27 @@ test('process page response accumulates message IDs across pages', () => {
       nextPageToken: null,
       pagesFetched: 0,
       messagesDiscovered: 0,
-      messageIds: []
+      messageIds: [],
     },
-    apiRequests: 0
+    apiRequests: 0,
   };
-  
+
   // First page
-  let result = run('Process Page Response', 
-    listResponse([{ id: 'msg1' }, { id: 'msg2' }], 'token1'), 
-    state
+  let result = run(
+    'Process Page Response',
+    listResponse([{ id: 'msg1' }, { id: 'msg2' }], 'token1'),
+    state,
   )[0].json;
   assert.deepEqual(result.pagination.messageIds, ['msg1', 'msg2']);
   assert.equal(result.pagination.pagesFetched, 1);
   assert.equal(result.pagination.hasMorePages, true);
   assert.equal(result.apiRequests, 1);
-  
+
   // Second page
-  result = run('Process Page Response',
+  result = run(
+    'Process Page Response',
     listResponse([{ id: 'msg3' }, { id: 'msg4' }], null),
-    result
+    result,
   )[0].json;
   assert.deepEqual(result.pagination.messageIds, ['msg1', 'msg2', 'msg3', 'msg4']);
   assert.equal(result.pagination.pagesFetched, 2);
@@ -158,16 +167,17 @@ test('process page response stops pagination when maxMessages is reached', () =>
       nextPageToken: null,
       pagesFetched: 0,
       messagesDiscovered: 0,
-      messageIds: ['msg1', 'msg2']
+      messageIds: ['msg1', 'msg2'],
     },
-    apiRequests: 0
+    apiRequests: 0,
   };
-  
-  const result = run('Process Page Response',
+
+  const result = run(
+    'Process Page Response',
     listResponse([{ id: 'msg3' }, { id: 'msg4' }], 'token1'),
-    state
+    state,
   )[0].json;
-  
+
   assert.deepEqual(result.pagination.messageIds, ['msg1', 'msg2']);
   assert.equal(result.pagination.hasMorePages, false);
 });
@@ -180,16 +190,17 @@ test('process page response detects and deduplicates message IDs', () => {
       nextPageToken: null,
       pagesFetched: 0,
       messagesDiscovered: 0,
-      messageIds: ['msg1']
+      messageIds: ['msg1'],
     },
-    apiRequests: 0
+    apiRequests: 0,
   };
-  
-  const result = run('Process Page Response',
+
+  const result = run(
+    'Process Page Response',
     listResponse([{ id: 'msg1' }, { id: 'msg2' }], null),
-    state
+    state,
   )[0].json;
-  
+
   assert.deepEqual(result.pagination.messageIds, ['msg1', 'msg2']);
   assert.equal(result.pagination.messagesDiscovered, 2);
 });
@@ -202,15 +213,15 @@ test('process page response rejects invalid message ID formats', () => {
       nextPageToken: null,
       pagesFetched: 0,
       messagesDiscovered: 0,
-      messageIds: []
+      messageIds: [],
     },
-    apiRequests: 0
+    apiRequests: 0,
   };
-  
+
   for (const badId of ['../msg1', 'msg1\n', 'msg1/', 'msg1 ', '', null]) {
     assert.throws(
       () => run('Process Page Response', listResponse([{ id: badId }], null), state),
-      /Invalid Gmail message ID format/
+      /Invalid Gmail message ID format/,
     );
   }
 });
@@ -223,16 +234,16 @@ test('prepare metadata requests converts message IDs to HTTP requests', () => {
       nextPageToken: null,
       pagesFetched: 1,
       messagesDiscovered: 3,
-      messageIds: ['msg1', 'msg2', 'msg3']
+      messageIds: ['msg1', 'msg2', 'msg3'],
     },
-    apiRequests: 1
+    apiRequests: 1,
   };
-  
+
   const input = {
     first: () => ({ json: state }),
-    all: () => []
+    all: () => [],
   };
-  
+
   const result = new Function('$input', '$', node('Prepare Metadata Requests').parameters.jsCode)(
     input,
     (name) => {
@@ -240,10 +251,13 @@ test('prepare metadata requests converts message IDs to HTTP requests', () => {
       return { first: () => ({ json: state }) };
     },
   );
-  
+
   assert.equal(result.length, 3);
-  assert.deepEqual(result.map(r => r.json.id), ['msg1', 'msg2', 'msg3']);
-  assert.ok(result.every(r => r.json.state === state));
+  assert.deepEqual(
+    result.map((r) => r.json.id),
+    ['msg1', 'msg2', 'msg3'],
+  );
+  assert.ok(result.every((r) => r.json.state === state));
 });
 
 test('prepare metadata requests handles empty message list', () => {
@@ -254,16 +268,16 @@ test('prepare metadata requests handles empty message list', () => {
       nextPageToken: null,
       pagesFetched: 1,
       messagesDiscovered: 0,
-      messageIds: []
+      messageIds: [],
     },
-    apiRequests: 1
+    apiRequests: 1,
   };
-  
+
   const input = {
     first: () => ({ json: state }),
-    all: () => []
+    all: () => [],
   };
-  
+
   const result = new Function('$input', '$', node('Prepare Metadata Requests').parameters.jsCode)(
     input,
     (name) => {
@@ -271,7 +285,7 @@ test('prepare metadata requests handles empty message list', () => {
       return { first: () => ({ json: state }) };
     },
   );
-  
+
   assert.equal(result.length, 1);
   assert.equal(result[0].json.messagesAnalyzed, 0);
   assert.equal(result[0].json.unknownSenderCount, 0);
@@ -287,13 +301,16 @@ test('sender inventory report normalizes, counts, and sorts senders', () => {
       nextPageToken: null,
       pagesFetched: 1,
       messagesDiscovered: 7,
-      messageIds: ['id1', 'id2', 'id3', 'id4', 'id5', 'id6', 'id7']
+      messageIds: ['id1', 'id2', 'id3', 'id4', 'id5', 'id6', 'id7'],
     },
-    apiRequests: 1
+    apiRequests: 1,
   };
-  
+
   const items = [
-    metadata('id1', [header('From', 'Example <NEWS@EXAMPLE.TEST>'), header('List-Unsubscribe', '<https://example.test/unsubscribe>')]),
+    metadata('id1', [
+      header('From', 'Example <NEWS@EXAMPLE.TEST>'),
+      header('List-Unsubscribe', '<https://example.test/unsubscribe>'),
+    ]),
     metadata('id2', [header('from', 'news@example.test'), header('Precedence', 'Bulk')]),
     metadata('id3', [header('From', 'no-reply@example.test')]),
     metadata('id4', [header('From', 'Person <a@example.test>')]),
@@ -301,17 +318,18 @@ test('sender inventory report normalizes, counts, and sorts senders', () => {
     metadata('id6', []),
     metadata('id7', [header('From', 'a@example.test')]),
   ];
-  
+
   const input = {
-    all: () => items.map((item, idx) => ({
-      json: {
-        id: `id${idx + 1}`,
-        state,
-        payload: item.json.payload
-      }
-    }))
+    all: () =>
+      items.map((item, idx) => ({
+        json: {
+          id: `id${idx + 1}`,
+          state,
+          payload: item.json.payload,
+        },
+      })),
   };
-  
+
   const report = new Function('$input', '$', node('Sender Inventory Report').parameters.jsCode)(
     input,
     (name) => {
@@ -319,7 +337,7 @@ test('sender inventory report normalizes, counts, and sorts senders', () => {
       return { first: () => ({ json: state }) };
     },
   )[0].json;
-  
+
   assert.equal(report.messagesAnalyzed, 7);
   assert.equal(report.unknownSenderCount, 2);
   assert.equal(report.uniqueSenderCount, 3);
@@ -329,22 +347,22 @@ test('sender inventory report normalizes, counts, and sorts senders', () => {
       count: 2,
       signals: { listUnsubscribe: 0, bulkOrListPrecedence: 0, noReplyAddress: 0 },
       category: 'no_signal',
-      safeToDelete: false
+      safeToDelete: false,
     },
     {
       sender: 'news@example.test',
       count: 2,
       signals: { listUnsubscribe: 1, bulkOrListPrecedence: 1, noReplyAddress: 0 },
       category: 'potential_newsletter_or_automated',
-      safeToDelete: false
+      safeToDelete: false,
     },
     {
       sender: 'no-reply@example.test',
       count: 1,
       signals: { listUnsubscribe: 0, bulkOrListPrecedence: 0, noReplyAddress: 1 },
       category: 'potential_newsletter_or_automated',
-      safeToDelete: false
-    }
+      safeToDelete: false,
+    },
   ]);
 });
 
@@ -356,30 +374,31 @@ test('sender inventory report does not include sensitive data in output', () => 
       nextPageToken: null,
       pagesFetched: 1,
       messagesDiscovered: 1,
-      messageIds: ['id1']
+      messageIds: ['id1'],
     },
-    apiRequests: 1
+    apiRequests: 1,
   };
-  
+
   const items = [
     metadata('id1', [
       header('From', 'Person <user@example.test>'),
       header('Subject', 'Private subject line'),
       header('Date', 'Mon, 12 Nov 2026 10:00:00 +0000'),
-      header('List-Unsubscribe', '<https://example.test/unsubscribe?token=secret>')
-    ])
+      header('List-Unsubscribe', '<https://example.test/unsubscribe?token=secret>'),
+    ]),
   ];
-  
+
   const input = {
-    all: () => items.map((item, idx) => ({
-      json: {
-        id: `id${idx + 1}`,
-        state,
-        payload: item.json.payload
-      }
-    }))
+    all: () =>
+      items.map((item, idx) => ({
+        json: {
+          id: `id${idx + 1}`,
+          state,
+          payload: item.json.payload,
+        },
+      })),
   };
-  
+
   const report = new Function('$input', '$', node('Sender Inventory Report').parameters.jsCode)(
     input,
     (name) => {
@@ -387,7 +406,7 @@ test('sender inventory report does not include sensitive data in output', () => 
       return { first: () => ({ json: state }) };
     },
   )[0].json;
-  
+
   assert.doesNotMatch(JSON.stringify(report), /Private subject line|secret|Mon, 12 Nov/);
 });
 
@@ -399,28 +418,29 @@ test('sender inventory report marks partial results when analysis incomplete', (
       nextPageToken: null,
       pagesFetched: 1,
       messagesDiscovered: 5,
-      messageIds: ['id1', 'id2', 'id3', 'id4', 'id5']
+      messageIds: ['id1', 'id2', 'id3', 'id4', 'id5'],
     },
-    apiRequests: 6
+    apiRequests: 6,
   };
-  
+
   const items = [
     metadata('id1', [header('From', 'user1@example.test')]),
     metadata('id2', [header('From', 'user2@example.test')]),
-    metadata('id3', [header('From', 'user3@example.test')])
+    metadata('id3', [header('From', 'user3@example.test')]),
     // id4 and id5 are missing
   ];
-  
+
   const input = {
-    all: () => items.map((item, idx) => ({
-      json: {
-        id: `id${idx + 1}`,
-        state,
-        payload: item.json.payload
-      }
-    }))
+    all: () =>
+      items.map((item, idx) => ({
+        json: {
+          id: `id${idx + 1}`,
+          state,
+          payload: item.json.payload,
+        },
+      })),
   };
-  
+
   const report = new Function('$input', '$', node('Sender Inventory Report').parameters.jsCode)(
     input,
     (name) => {
@@ -428,34 +448,52 @@ test('sender inventory report marks partial results when analysis incomplete', (
       return { first: () => ({ json: state }) };
     },
   )[0].json;
-  
+
   assert.equal(report.messagesAnalyzed, 3);
   assert.equal(report.partial, true);
 });
 
 test('workflow graph and pagination connections are correct', () => {
   const connections = workflow.connections;
-  
-  assert.deepEqual(connections['Manual Trigger'].main, [[{ node: 'Configure Pagination', type: 'main', index: 0 }]]);
-  const pageBranches = [[
-    { node: 'Preserve Page State', type: 'main', index: 0 },
-    { node: 'List Messages Page', type: 'main', index: 0 }
-  ]];
+
+  assert.deepEqual(connections['Manual Trigger'].main, [
+    [{ node: 'Configure Pagination', type: 'main', index: 0 }],
+  ]);
+  const pageBranches = [
+    [
+      { node: 'Preserve Page State', type: 'main', index: 0 },
+      { node: 'List Messages Page', type: 'main', index: 0 },
+    ],
+  ];
   assert.deepEqual(connections['Configure Pagination'].main, pageBranches);
-  assert.deepEqual(connections['Preserve Page State'].main, [[{ node: 'Pair Page State and Response', type: 'main', index: 0 }]]);
-  assert.deepEqual(connections['List Messages Page'].main, [[{ node: 'Wrap Page Response', type: 'main', index: 0 }]]);
-  assert.deepEqual(connections['Wrap Page Response'].main, [[{ node: 'Pair Page State and Response', type: 'main', index: 1 }]]);
-  assert.deepEqual(connections['Pair Page State and Response'].main, [[{ node: 'Process Page Response', type: 'main', index: 0 }]]);
-  assert.deepEqual(connections['Process Page Response'].main, [[{ node: 'Has More Pages', type: 'main', index: 0 }]]);
-  
+  assert.deepEqual(connections['Preserve Page State'].main, [
+    [{ node: 'Pair Page State and Response', type: 'main', index: 0 }],
+  ]);
+  assert.deepEqual(connections['List Messages Page'].main, [
+    [{ node: 'Wrap Page Response', type: 'main', index: 0 }],
+  ]);
+  assert.deepEqual(connections['Wrap Page Response'].main, [
+    [{ node: 'Pair Page State and Response', type: 'main', index: 1 }],
+  ]);
+  assert.deepEqual(connections['Pair Page State and Response'].main, [
+    [{ node: 'Process Page Response', type: 'main', index: 0 }],
+  ]);
+  assert.deepEqual(connections['Process Page Response'].main, [
+    [{ node: 'Has More Pages', type: 'main', index: 0 }],
+  ]);
+
   assert.deepEqual(connections['Has More Pages'].main, [
     [{ node: 'Rate Limit Delay', type: 'main', index: 0 }],
-    [{ node: 'Prepare Metadata Requests', type: 'main', index: 0 }]
+    [{ node: 'Prepare Metadata Requests', type: 'main', index: 0 }],
   ]);
-  
+
   assert.deepEqual(connections['Rate Limit Delay'].main, pageBranches);
-  assert.deepEqual(connections['Prepare Metadata Requests'].main, [[{ node: 'Get Message Metadata', type: 'main', index: 0 }]]);
-  assert.deepEqual(connections['Get Message Metadata'].main, [[{ node: 'Sender Inventory Report', type: 'main', index: 0 }]]);
+  assert.deepEqual(connections['Prepare Metadata Requests'].main, [
+    [{ node: 'Get Message Metadata', type: 'main', index: 0 }],
+  ]);
+  assert.deepEqual(connections['Get Message Metadata'].main, [
+    [{ node: 'Sender Inventory Report', type: 'main', index: 0 }],
+  ]);
 });
 
 test('HTTP list messages node uses correct URL with pagination support', () => {
@@ -463,7 +501,7 @@ test('HTTP list messages node uses correct URL with pagination support', () => {
   assert.equal(listNode.parameters.method ?? 'GET', 'GET');
   assert.equal(listNode.parameters.authentication, 'genericCredentialType');
   assert.equal(listNode.parameters.genericAuthType, 'oAuth2Api');
-  
+
   const expression = listNode.parameters.url;
   assert.ok(expression.includes('pageToken'));
   assert.ok(expression.includes('maxResults'));
@@ -475,7 +513,7 @@ test('HTTP metadata node is GET only metadata format', () => {
   assert.equal(metaNode.parameters.method ?? 'GET', 'GET');
   assert.equal(metaNode.parameters.authentication, 'genericCredentialType');
   assert.equal(metaNode.parameters.genericAuthType, 'oAuth2Api');
-  
+
   const expression = metaNode.parameters.url;
   assert.ok(expression.includes('format=metadata'));
   assert.ok(expression.includes('metadataHeaders'));
@@ -495,20 +533,20 @@ test('multiple pages with 10000 message limit', () => {
       nextPageToken: null,
       pagesFetched: 0,
       messagesDiscovered: 0,
-      messageIds: []
+      messageIds: [],
     },
-    apiRequests: 0
+    apiRequests: 0,
   };
-  
+
   for (let page = 0; page < 5; page++) {
     const msgs = Array.from({ length: 100 }, (_, i) => ({ id: `msg_${page}_${i}` }));
     const nextToken = page < 4 ? `token_${page + 1}` : null;
-    
+
     state = run('Process Page Response', listResponse(msgs, nextToken), state)[0].json;
     assert.equal(state.pagination.pagesFetched, page + 1);
     assert.equal(state.pagination.messageIds.length, (page + 1) * 100);
   }
-  
+
   assert.equal(state.pagination.hasMorePages, false);
   assert.equal(state.pagination.messageIds.length, 500);
 });
@@ -518,9 +556,9 @@ test('configuration rejects pageSize exceeding or matching maxMessages when inap
     maxMessages: 100,
     pageSize: 500,
     pagination: { nextPageToken: null, pagesFetched: 0, messagesDiscovered: 0, messageIds: [] },
-    apiRequests: 0
+    apiRequests: 0,
   };
-  
+
   // This should be allowed; pageSize can be larger than maxMessages
   const result = run('Process Page Response', listResponse([{ id: 'msg1' }], null), state)[0].json;
   assert.equal(result.pagination.messageIds.length, 1);

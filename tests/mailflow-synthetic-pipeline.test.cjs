@@ -43,8 +43,11 @@ test('synthetic workflow is inactive, test-only, and connected without Gmail or 
   assert.match(workflow.name, /TEST ONLY - INACTIVE/);
   assert.deepEqual(workflow.pinData, {});
   assert.deepEqual(workflowErrors(workflow), []);
-  assert.ok(workflow.nodes.every((node) =>
-    !/gmail|httpRequest|emailSend|sms|scheduleTrigger/i.test(node.type)));
+  assert.ok(
+    workflow.nodes.every(
+      (node) => !/gmail|httpRequest|emailSend|sms|scheduleTrigger/i.test(node.type),
+    ),
+  );
   assert.deepEqual(workflow.connections['Manual Trigger'].main[0][0], {
     node: 'Create Synthetic Gmail Messages',
     type: 'main',
@@ -65,11 +68,14 @@ test('workflow Code nodes produce a synthetic batch and invoke the shared pipeli
   const generated = await runCode(messagesNode, []);
   assert.equal(generated.length, 1);
   const report = await runWorkflowBatch(generated[0].json.messages);
-  assert.deepEqual(report.results.map(({ category, action }) => ({ category, action })), [
-    { category: 'interview_request', action: 'immediate' },
-    { category: 'application_confirmation', action: 'daily' },
-    { category: 'job_alert', action: 'weekly' },
-  ]);
+  assert.deepEqual(
+    report.results.map(({ category, action }) => ({ category, action })),
+    [
+      { category: 'interview_request', action: 'immediate' },
+      { category: 'application_confirmation', action: 'daily' },
+      { category: 'job_alert', action: 'weekly' },
+    ],
+  );
 });
 
 test('batch report correlates decisions by ordinal and excludes message content and identifiers', async () => {
@@ -77,27 +83,43 @@ test('batch report correlates decisions by ordinal and excludes message content 
   const inputMessages = generated[0].json.messages;
   const report = await runWorkflowBatch(inputMessages);
 
-  assert.deepEqual(report.results.map((entry) => entry.messageNumber), [1, 2, 3]);
+  assert.deepEqual(
+    report.results.map((entry) => entry.messageNumber),
+    [1, 2, 3],
+  );
   assert.deepEqual(report.results[0].matchedRuleIds, ['interview_invitation']);
-  assert.deepEqual(report.results[0].explanationCodes, ['positive_rule_matched', 'default_action_selected']);
+  assert.deepEqual(report.results[0].explanationCodes, [
+    'positive_rule_matched',
+    'default_action_selected',
+  ]);
   const serialized = JSON.stringify(report);
   for (const message of inputMessages) {
     assert.ok(!serialized.includes(message.id));
     assert.ok(!serialized.includes(message.threadId));
-    assert.ok(!serialized.includes(Buffer.from(message.payload.body.data, 'base64url').toString('utf8')));
+    assert.ok(
+      !serialized.includes(Buffer.from(message.payload.body.data, 'base64url').toString('utf8')),
+    );
   }
 });
 
 test('malformed messages produce safe none decisions without suppressing valid batch results', async () => {
   const generated = await runCode(messagesNode, []);
   const validMessages = generated[0].json.messages;
-  const throwingMessage = new Proxy({}, {
-    get(target, property, receiver) {
-      if (property === 'payload') throw new Error('synthetic processing failure');
-      return Reflect.get(target, property, receiver);
+  const throwingMessage = new Proxy(
+    {},
+    {
+      get(target, property, receiver) {
+        if (property === 'payload') throw new Error('synthetic processing failure');
+        return Reflect.get(target, property, receiver);
+      },
     },
-  });
-  const report = await runWorkflowBatch([validMessages[0], throwingMessage, null, validMessages[2]]);
+  );
+  const report = await runWorkflowBatch([
+    validMessages[0],
+    throwingMessage,
+    null,
+    validMessages[2],
+  ]);
 
   assert.equal(report.results.length, 4);
   assert.deepEqual(report.results[0], {
@@ -125,14 +147,16 @@ test('malformed messages produce safe none decisions without suppressing valid b
 test('invalid batches fail closed to a structured none decision', () => {
   assert.deepEqual(processSyntheticBatch(null), {
     schemaVersion: '1.0',
-    results: [{
-      messageNumber: null,
-      category: 'other',
-      action: 'none',
-      matchedRuleIds: [],
-      explanationCodes: ['invalid_message_batch'],
-      status: 'invalid_input',
-    }],
+    results: [
+      {
+        messageNumber: null,
+        category: 'other',
+        action: 'none',
+        matchedRuleIds: [],
+        explanationCodes: ['invalid_message_batch'],
+        status: 'invalid_input',
+      },
+    ],
   });
 });
 
