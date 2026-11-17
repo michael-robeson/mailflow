@@ -135,6 +135,7 @@ implemented features.
 - [Live Gmail persistence integration](docs/live-persistence.md)
 - [Bounded historical ingestion](docs/historical-ingestion.md)
 - [Automatic multi-page historical ingestion](docs/historical-multi-page.md)
+- [Workflow 09 synthetic runtime verification](docs/workflow-09-runtime-verification.md)
 - [Architecture and data flows](docs/architecture.md)
 - [Safety model](docs/safety-rules.md)
 - [Extensibility and future deployment](docs/extensibility.md)
