@@ -6,9 +6,7 @@ const path = require('node:path');
 const { resolveRuntimeDirectory } = require('./prepare-workflow-09-runtime.cjs');
 
 const PROJECT_PATTERN = /^mailflow-w09-[a-f0-9]{12}$/;
-const CONTAINER_SERVICES = new Set([
-  'n8n', 'n8n-postgres', 'mailflow-postgres', 'w09-gmail-mock',
-]);
+const CONTAINER_SERVICES = new Set(['n8n', 'n8n-postgres', 'mailflow-postgres', 'w09-gmail-mock']);
 const NETWORKS = new Set(['runtime', 'persistence']);
 
 function resolveProject(runtimeDir, projectName) {
@@ -17,9 +15,9 @@ function resolveProject(runtimeDir, projectName) {
     throw new Error('Invalid workflow 09 Compose project name');
   }
 
-  const marker = JSON.parse(fs.readFileSync(
-    path.join(resolvedRuntimeDir, '.mailflow-w09-runtime'), 'utf8',
-  ));
+  const marker = JSON.parse(
+    fs.readFileSync(path.join(resolvedRuntimeDir, '.mailflow-w09-runtime'), 'utf8'),
+  );
   if (projectName !== marker.projectName) {
     throw new Error('Compose project does not match the generated runtime marker');
   }
@@ -40,9 +38,10 @@ function dockerOutput(args, run = execFileSync) {
 }
 
 function listIds(kind, projectName, run) {
-  const args = kind === 'container'
-    ? ['ps', '-aq', '--filter', `label=com.docker.compose.project=${projectName}`]
-    : ['network', 'ls', '-q', '--filter', `label=com.docker.compose.project=${projectName}`];
+  const args =
+    kind === 'container'
+      ? ['ps', '-aq', '--filter', `label=com.docker.compose.project=${projectName}`]
+      : ['network', 'ls', '-q', '--filter', `label=com.docker.compose.project=${projectName}`];
   return dockerOutput(args, run).split(/\s+/).filter(Boolean);
 }
 
@@ -65,11 +64,13 @@ function assertProjectOwned(identity, run = execFileSync) {
 
   for (const id of containers) {
     const labels = inspectLabels(id, 'container', run) ?? {};
-    if (labels['com.docker.compose.project'] !== identity.projectName
-      || labels['com.docker.compose.project.config_files'] !== identity.composeFile
-      || labels['com.docker.compose.project.environment_file'] !== identity.environmentFile
-      || labels['com.docker.compose.project.working_dir'] !== identity.workingDir
-      || !CONTAINER_SERVICES.has(labels['com.docker.compose.service'])) {
+    if (
+      labels['com.docker.compose.project'] !== identity.projectName ||
+      labels['com.docker.compose.project.config_files'] !== identity.composeFile ||
+      labels['com.docker.compose.project.environment_file'] !== identity.environmentFile ||
+      labels['com.docker.compose.project.working_dir'] !== identity.workingDir ||
+      !CONTAINER_SERVICES.has(labels['com.docker.compose.service'])
+    ) {
       throw new Error('Compose project contains a container not owned by this workflow 09 harness');
     }
   }
@@ -77,9 +78,11 @@ function assertProjectOwned(identity, run = execFileSync) {
   for (const id of networks) {
     const labels = inspectLabels(id, 'network', run) ?? {};
     const name = dockerOutput(['inspect', '--format', '{{.Name}}', id], run);
-    if (labels['com.docker.compose.project'] !== identity.projectName
-      || !NETWORKS.has(labels['com.docker.compose.network'])
-      || name !== `${identity.projectName}_${labels['com.docker.compose.network']}`) {
+    if (
+      labels['com.docker.compose.project'] !== identity.projectName ||
+      !NETWORKS.has(labels['com.docker.compose.network']) ||
+      name !== `${identity.projectName}_${labels['com.docker.compose.network']}`
+    ) {
       throw new Error('Compose project contains a network not owned by this workflow 09 harness');
     }
   }

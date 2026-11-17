@@ -67,13 +67,16 @@ test('supports each action value as an independent category override', () => {
 });
 
 test('allows overriding other while insufficient evidence always remains none', () => {
-  const result = evaluateNotificationPolicy({
-    schemaVersion: '1.0',
-    category: 'other',
-    status: 'insufficient_evidence',
-    body: 'Synthetic sensitive message content',
-    messageId: 'synthetic-id',
-  }, { overrides: { other: 'immediate' } });
+  const result = evaluateNotificationPolicy(
+    {
+      schemaVersion: '1.0',
+      category: 'other',
+      status: 'insufficient_evidence',
+      body: 'Synthetic sensitive message content',
+      messageId: 'synthetic-id',
+    },
+    { overrides: { other: 'immediate' } },
+  );
 
   assert.deepEqual(result, {
     schemaVersion: '1.0',
@@ -113,13 +116,41 @@ test('malformed, unsupported, or ambiguous classifications fail closed', () => {
   const cases = [
     [null, 'invalid_classification', 'invalid_classification'],
     [[], 'invalid_classification', 'invalid_classification'],
-    [{ category: 'interview_request', status: 'matched' }, 'invalid_classification_schema', 'invalid_classification'],
-    [classification('interview_request', { schemaVersion: '2.0' }), 'unsupported_classification_schema', 'unsupported_classification'],
-    [{ schemaVersion: '1.0', category: 'other', status: 'unsupported_schema' }, 'unsupported_classification', 'unsupported_classification'],
-    [{ schemaVersion: '1.0', category: 'interview_request', status: 'insufficient_evidence' }, 'inconsistent_classification', 'invalid_classification'],
-    [{ schemaVersion: '1.0', category: 'future_category', status: 'matched' }, 'invalid_classification_category', 'invalid_classification'],
-    [{ schemaVersion: '1.0', category: 'other', status: 'matched' }, 'invalid_classification_category', 'invalid_classification'],
-    [{ schemaVersion: '1.0', category: 'interview_request', status: 'invalid_input' }, 'invalid_classification_status', 'invalid_classification'],
+    [
+      { category: 'interview_request', status: 'matched' },
+      'invalid_classification_schema',
+      'invalid_classification',
+    ],
+    [
+      classification('interview_request', { schemaVersion: '2.0' }),
+      'unsupported_classification_schema',
+      'unsupported_classification',
+    ],
+    [
+      { schemaVersion: '1.0', category: 'other', status: 'unsupported_schema' },
+      'unsupported_classification',
+      'unsupported_classification',
+    ],
+    [
+      { schemaVersion: '1.0', category: 'interview_request', status: 'insufficient_evidence' },
+      'inconsistent_classification',
+      'invalid_classification',
+    ],
+    [
+      { schemaVersion: '1.0', category: 'future_category', status: 'matched' },
+      'invalid_classification_category',
+      'invalid_classification',
+    ],
+    [
+      { schemaVersion: '1.0', category: 'other', status: 'matched' },
+      'invalid_classification_category',
+      'invalid_classification',
+    ],
+    [
+      { schemaVersion: '1.0', category: 'interview_request', status: 'invalid_input' },
+      'invalid_classification_status',
+      'invalid_classification',
+    ],
   ];
 
   for (const [input, explanationCode, status] of cases) {
@@ -134,26 +165,34 @@ test('malformed, unsupported, or ambiguous classifications fail closed', () => {
 });
 
 test('uses the classifier-resolved category for overlapping intents', () => {
-  const result = evaluateNotificationPolicy(classification('interview_request', {
-    matchedRuleIds: ['interview_invitation', 'application_received'],
-  }));
+  const result = evaluateNotificationPolicy(
+    classification('interview_request', {
+      matchedRuleIds: ['interview_invitation', 'application_received'],
+    }),
+  );
   assert.equal(result.category, 'interview_request');
   assert.equal(result.action, 'immediate');
 });
 
 test('decision output contains no identifiers, message text, or classification details', () => {
-  const result = evaluateNotificationPolicy(classification('job_alert', {
-    messageId: 'synthetic-private-id',
-    subject: 'Synthetic private subject',
-    body: 'Synthetic private body',
-    matchedRuleIds: ['job_alert_digest'],
-  }));
+  const result = evaluateNotificationPolicy(
+    classification('job_alert', {
+      messageId: 'synthetic-private-id',
+      subject: 'Synthetic private subject',
+      body: 'Synthetic private body',
+      matchedRuleIds: ['job_alert_digest'],
+    }),
+  );
   const serialized = JSON.stringify(result);
   assert.ok(!serialized.includes('synthetic-private-id'));
   assert.ok(!serialized.includes('Synthetic private'));
   assert.ok(!serialized.includes('job_alert_digest'));
   assert.deepEqual(Object.keys(result), [
-    'schemaVersion', 'category', 'action', 'explanationCodes', 'status',
+    'schemaVersion',
+    'category',
+    'action',
+    'explanationCodes',
+    'status',
   ]);
   assert.ok(!('delivered' in result));
   assert.ok(!('scheduledAt' in result));

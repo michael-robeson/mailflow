@@ -6,13 +6,19 @@ const os = require('node:os');
 const path = require('node:path');
 const { execFileSync, spawnSync } = require('node:child_process');
 const test = require('node:test');
-const { parseJsonWithoutDuplicateKeys, workflowErrors, secretErrors } = require('../scripts/validate.cjs');
+const {
+  parseJsonWithoutDuplicateKeys,
+  workflowErrors,
+  secretErrors,
+} = require('../scripts/validate.cjs');
 
 const workflow = (nodes = []) => ({ active: false, pinData: {}, nodes });
 const node = (type, parameters = {}) => ({ name: 'synthetic', type, parameters });
 
 test('JSON validation rejects duplicate decoded keys at every depth', () => {
-  assert.deepEqual(parseJsonWithoutDuplicateKeys('{"a":[{"x":1},{"x":2}]}'), { a: [{ x: 1 }, { x: 2 }] });
+  assert.deepEqual(parseJsonWithoutDuplicateKeys('{"a":[{"x":1},{"x":2}]}'), {
+    a: [{ x: 1 }, { x: 2 }],
+  });
   assert.throws(() => parseJsonWithoutDuplicateKeys('{"a":1,"\\u0061":2}'), /Duplicate JSON key/);
   assert.throws(() => parseJsonWithoutDuplicateKeys('{"a":[{"x":1,"x":2}]}'), /Duplicate JSON key/);
   assert.throws(() => parseJsonWithoutDuplicateKeys('{"a":}'), SyntaxError);
@@ -22,44 +28,103 @@ test('workflow validation requires inactive workflows without pinned data or cre
   assert.deepEqual(workflowErrors(workflow()), []);
   assert.match(workflowErrors({ active: true, nodes: [] }).join(), /inactive/);
   assert.match(workflowErrors({ nodes: [] }).join(), /inactive/);
-  assert.match(workflowErrors({ active: false, nodes: [], pinData: { result: [{}] } }).join(), /pinned/);
+  assert.match(
+    workflowErrors({ active: false, nodes: [], pinData: { result: [{}] } }).join(),
+    /pinned/,
+  );
   const withCredentials = workflow([node('n8n-nodes-base.httpRequest')]);
   withCredentials.nodes[0].credentials = { oAuth2Api: { id: 'local-id' } };
   assert.match(workflowErrors(withCredentials).join(), /credential/);
-  assert.match(workflowErrors(workflow([node('n8n-nodes-base.httpRequest', {
-    headerParameters: { parameters: [{ name: 'Authorization', value: 'synthetic' }] },
-  })])).join(), /header/);
-  assert.match(workflowErrors(workflow([node('n8n-nodes-base.httpRequest', {
-    headers: { authorization: 'synthetic', [['api', 'key'].join('_')]: 'synthetic' },
-  })])).join(), /credential/);
+  assert.match(
+    workflowErrors(
+      workflow([
+        node('n8n-nodes-base.httpRequest', {
+          headerParameters: { parameters: [{ name: 'Authorization', value: 'synthetic' }] },
+        }),
+      ]),
+    ).join(),
+    /header/,
+  );
+  assert.match(
+    workflowErrors(
+      workflow([
+        node('n8n-nodes-base.httpRequest', {
+          headers: { authorization: 'synthetic', [['api', 'key'].join('_')]: 'synthetic' },
+        }),
+      ]),
+    ).join(),
+    /credential/,
+  );
 });
 
 test('workflow validation rejects destructive, dynamic or missing Gmail operations and non-GET HTTP', () => {
   const gmail = (resource, operation) => node('n8n-nodes-base.gmail', { resource, operation });
   assert.deepEqual(workflowErrors(workflow([gmail('message', 'getAll')])), []);
-  for (const operation of ['delete', 'trash', 'modify', 'send', '={{ $json.operation }}', undefined]) {
+  for (const operation of [
+    'delete',
+    'trash',
+    'modify',
+    'send',
+    '={{ $json.operation }}',
+    undefined,
+  ]) {
     assert.match(workflowErrors(workflow([gmail('message', operation)])).join(), /read-only/);
   }
   assert.match(workflowErrors(workflow([gmail('draft', 'get')])).join(), /read-only/);
   assert.deepEqual(workflowErrors(workflow([node('n8n-nodes-base.httpRequest')])), []);
-  assert.deepEqual(workflowErrors(workflow([node('n8n-nodes-base.httpRequest', { method: 'GET' })])), []);
+  assert.deepEqual(
+    workflowErrors(workflow([node('n8n-nodes-base.httpRequest', { method: 'GET' })])),
+    [],
+  );
   for (const method of ['POST', 'DELETE', '={{ $json.method }}']) {
-    assert.match(workflowErrors(workflow([node('n8n-nodes-base.httpRequest', { method })])).join(), /GET/);
+    assert.match(
+      workflowErrors(workflow([node('n8n-nodes-base.httpRequest', { method })])).join(),
+      /GET/,
+    );
   }
-  for (const jsCode of ['fetch(url)', '$http.request(options)', 'this.helpers.httpRequest(options)', "require('https')"]) {
-    assert.match(workflowErrors(workflow([node('n8n-nodes-base.code', { jsCode })])).join(), /network or module/);
+  for (const jsCode of [
+    'fetch(url)',
+    '$http.request(options)',
+    'this.helpers.httpRequest(options)',
+    "require('https')",
+  ]) {
+    assert.match(
+      workflowErrors(workflow([node('n8n-nodes-base.code', { jsCode })])).join(),
+      /network or module/,
+    );
   }
-  assert.deepEqual(workflowErrors(workflow([node('n8n-nodes-base.code', {
-    jsCode: "const pipeline = require('mailflow-pipeline'); return pipeline.processSyntheticBatch([]);",
-  })])), []);
-  assert.match(workflowErrors(workflow([node('n8n-nodes-base.code', {
-    jsCode: "require('mailflow-pipeline'); require('fs');",
-  })])).join(), /network or module/);
+  assert.deepEqual(
+    workflowErrors(
+      workflow([
+        node('n8n-nodes-base.code', {
+          jsCode:
+            "const pipeline = require('mailflow-pipeline'); return pipeline.processSyntheticBatch([]);",
+        }),
+      ]),
+    ),
+    [],
+  );
+  assert.match(
+    workflowErrors(
+      workflow([
+        node('n8n-nodes-base.code', {
+          jsCode: "require('mailflow-pipeline'); require('fs');",
+        }),
+      ]),
+    ).join(),
+    /network or module/,
+  );
 });
 
 test('secret scanner flags sensitive paths and representative secrets without reporting values', () => {
   assert.deepEqual(secretErrors('.env.example', 'POSTGRES_PASSWORD=\n'), []);
-  for (const filename of ['.env', '.env.local', 'credentials/export.json', 'key.pem', '.n8n/state']) {
+  for (const filename of [
+    '.env',
+    '.env.local',
+    'credentials/export.json',
+    'key.pem',
+    '.n8n/state',
+  ]) {
     assert.ok(secretErrors(filename, '').length, filename);
   }
   const samples = [
@@ -73,10 +138,50 @@ test('secret scanner flags sensitive paths and representative secrets without re
   ];
   for (const [label, value] of samples) {
     const errors = secretErrors('example.txt', value);
-    assert.ok(errors.some((error) => error.includes(label)), label);
-    assert.ok(errors.every((error) => !error.includes(value)), 'must not print secret values');
+    assert.ok(
+      errors.some((error) => error.includes(label)),
+      label,
+    );
+    assert.ok(
+      errors.every((error) => !error.includes(value)),
+      'must not print secret values',
+    );
   }
   assert.deepEqual(secretErrors('example.txt', 'client_secret=\naccess_token=${TOKEN}\n'), []);
+});
+
+test('repository validation ignores dependencies and generated output but scans maintained files', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mailflow-ignore-gates-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const options = { cwd: root, encoding: 'utf8' };
+  const git = (...args) => execFileSync('git', args, options);
+  git('init', '-q');
+
+  fs.copyFileSync(path.join(__dirname, '..', '.gitignore'), path.join(root, '.gitignore'));
+  for (const directory of ['workflows', 'lib', 'node_modules/tool', 'coverage', 'dist', 'build']) {
+    fs.mkdirSync(path.join(root, directory), { recursive: true });
+  }
+  fs.writeFileSync(path.join(root, 'workflows/test.json'), '{"active":false,"nodes":[]}');
+  const marker = ['client', '_secret=synthetic', '-marker-value'].join('');
+  fs.writeFileSync(path.join(root, 'lib/maintained.cjs'), marker);
+  for (const filename of [
+    'node_modules/tool/index.cjs',
+    'coverage/report.txt',
+    'dist/generated.cjs',
+    'build/generated.cjs',
+  ]) {
+    fs.writeFileSync(path.join(root, filename), marker);
+  }
+
+  const result = spawnSync(
+    process.execPath,
+    [path.join(__dirname, '../scripts/validate.cjs')],
+    options,
+  );
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /lib\/maintained\.cjs: possible credential assignment detected/);
+  assert.doesNotMatch(result.stderr, /node_modules|coverage\/|dist\/|build\//);
+  assert.doesNotMatch(result.stderr, /synthetic-marker-value/);
 });
 
 test('staged validation checks the index rather than unstaged file contents', (t) => {
@@ -84,9 +189,12 @@ test('staged validation checks the index rather than unstaged file contents', (t
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const options = { cwd: root, encoding: 'utf8' };
   const git = (...args) => execFileSync('git', args, options);
-  const validate = () => spawnSync(process.execPath, [
-    path.join(__dirname, '../scripts/validate.cjs'), '--staged',
-  ], options);
+  const validate = () =>
+    spawnSync(
+      process.execPath,
+      [path.join(__dirname, '../scripts/validate.cjs'), '--staged'],
+      options,
+    );
   git('init', '-q');
   fs.mkdirSync(path.join(root, 'workflows'));
   const filename = path.join(root, 'workflows/test.json');
@@ -118,11 +226,21 @@ test('hook installation is repeatable, respects existing hooks, and runs staged 
     fs.mkdirSync(path.join(root, directory));
   }
   for (const file of [
-    '.githooks/pre-commit', 'package.json', 'scripts/install-hooks.sh', 'scripts/validate.cjs',
+    '.githooks/pre-commit',
+    'package.json',
+    'scripts/install-hooks.sh',
+    'scripts/validate.cjs',
   ]) {
     fs.copyFileSync(path.join(__dirname, '..', file), path.join(root, file));
   }
-  fs.writeFileSync(path.join(root, 'tests/example.test.cjs'), "require('node:test')('synthetic', () => {});\n");
+  const packagePath = path.join(root, 'package.json');
+  const packageManifest = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
+  packageManifest.scripts.verify = 'node scripts/validate.cjs && node --test tests/*.test.cjs';
+  fs.writeFileSync(packagePath, `${JSON.stringify(packageManifest, null, 2)}\n`);
+  fs.writeFileSync(
+    path.join(root, 'tests/example.test.cjs'),
+    "require('node:test')('synthetic', () => {});\n",
+  );
   fs.writeFileSync(path.join(root, 'workflows/example.json'), '{"active":false,"nodes":[]}');
   git('add', '.');
   assert.equal(run('scripts/install-hooks.sh').status, 0);

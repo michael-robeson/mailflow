@@ -5,9 +5,9 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 
-const workflow = JSON.parse(fs.readFileSync(
-  path.join(__dirname, '../workflows/03-gmail-paginated-inventory.json'), 'utf8',
-));
+const workflow = JSON.parse(
+  fs.readFileSync(path.join(__dirname, '../workflows/03-gmail-paginated-inventory.json'), 'utf8'),
+);
 const nodes = new Map(workflow.nodes.map((node) => [node.name, node]));
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
 
@@ -64,9 +64,13 @@ test('historical pagination carries IDs through three synthetic pages', async ()
           return nodeOutputs.get(nodeName)[0];
         },
       });
-      const code = name === 'Configure Pagination'
-        ? node.parameters.jsCode.replace('const requestDelayMs = 200;', 'const requestDelayMs = 0;')
-        : node.parameters.jsCode;
+      const code =
+        name === 'Configure Pagination'
+          ? node.parameters.jsCode.replace(
+              'const requestDelayMs = 200;',
+              'const requestDelayMs = 0;',
+            )
+          : node.parameters.jsCode;
       result = await new AsyncFunction('$input', '$', code)(input, lookup);
     }
     nodeOutputs.set(name, result);
@@ -77,11 +81,19 @@ test('historical pagination carries IDs through three synthetic pages', async ()
   }
 
   assert.deepEqual(requestTokens, [null, 'one', 'two']);
-  assert.deepEqual(outputs.map((state) => state.pagination.messageIds), [
-    ['a', 'b'], ['a', 'b', 'c'], ['a', 'b', 'c', 'd'],
-  ]);
+  assert.deepEqual(
+    outputs.map((state) => state.pagination.messageIds),
+    [
+      ['a', 'b'],
+      ['a', 'b', 'c'],
+      ['a', 'b', 'c', 'd'],
+    ],
+  );
   assert.deepEqual(requestSizes, ['100', '100', '100']);
-  assert.deepEqual(outputs.map((state) => state.pagination.pagesFetched), [1, 2, 3]);
+  assert.deepEqual(
+    outputs.map((state) => state.pagination.pagesFetched),
+    [1, 2, 3],
+  );
   assert.equal(outputs[2].pagination.messagesDiscovered, 5);
   assert.equal(outputs[2].apiRequests, 3);
   assert.equal(outputs[2].pagination.hasMorePages, false);

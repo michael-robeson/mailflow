@@ -93,17 +93,26 @@ Follow those documents for detailed procedures; do not duplicate them here.
 - From the repository root, run the canonical offline verification command:
 
   ```sh
+  npm ci
   npm run verify
   ```
 
-  It runs the repository validator and synthetic tests; it does not contact
-  Gmail or require n8n, containers, or a database. The PostgreSQL integration
-  test uses disposable containers and is separate. Run
+  `npm ci` installs only the pinned development tools; the root manifest
+  introduces no application runtime dependencies. `npm run verify` checks
+  formatting, runs ESLint and the repository validator, and runs synthetic
+  tests. ESLint complexity warnings are informational and use its default
+  threshold; do not set custom limits or refactor solely to reduce metrics.
+  Verification does not contact Gmail or require n8n, containers, or a
+  database. The PostgreSQL integration test uses disposable containers and is
+  separate. Run
   `npm run verify:postgres` only with explicit approval; consult
   [docs/setup.md](docs/setup.md) and
   [docs/postgres-persistence.md](docs/postgres-persistence.md) before running
   it. Do not run live or deployed integration tests unless specifically
   authorized.
+- Use `npm run format:check` and `npm run lint` for non-mutating individual
+  checks. `npm run format` and `npm run lint:fix` modify maintained CommonJS
+  source, tests, and scripts; inspect their changes before continuing.
 - The validator's `--staged` mode checks staged file contents. The pre-commit
   hook runs tests against the working tree, so stage related code and tests
   together and verify the intended snapshot. CI remains an independent gate.

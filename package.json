@@ -2,7 +2,17 @@
   "name": "mailflow",
   "private": true,
   "scripts": {
-    "verify": "node scripts/validate.cjs && node --test tests/*.test.cjs",
+    "format:check": "prettier --check \"lib/**/*.cjs\" \"scripts/**/*.cjs\" \"tests/**/*.cjs\"",
+    "format": "prettier --write \"lib/**/*.cjs\" \"scripts/**/*.cjs\" \"tests/**/*.cjs\"",
+    "lint": "eslint \"lib/**/*.cjs\" \"scripts/**/*.cjs\" \"tests/**/*.cjs\"",
+    "lint:fix": "eslint --fix \"lib/**/*.cjs\" \"scripts/**/*.cjs\" \"tests/**/*.cjs\"",
+    "verify": "npm run format:check && npm run lint && node scripts/validate.cjs && node --test tests/*.test.cjs",
     "verify:postgres": "sh scripts/test-persistence-postgres.sh"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "eslint": "10.15.0",
+    "globals": "17.14.0",
+    "prettier": "3.10.1"
   }
 }
