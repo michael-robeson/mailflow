@@ -117,7 +117,9 @@ test('hook installation is repeatable, respects existing hooks, and runs staged 
   for (const directory of ['.githooks', 'scripts', 'tests', 'workflows']) {
     fs.mkdirSync(path.join(root, directory));
   }
-  for (const file of ['.githooks/pre-commit', 'scripts/install-hooks.sh', 'scripts/validate.cjs']) {
+  for (const file of [
+    '.githooks/pre-commit', 'package.json', 'scripts/install-hooks.sh', 'scripts/validate.cjs',
+  ]) {
     fs.copyFileSync(path.join(__dirname, '..', file), path.join(root, file));
   }
   fs.writeFileSync(path.join(root, 'tests/example.test.cjs'), "require('node:test')('synthetic', () => {});\n");

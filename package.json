@@ -1,0 +1,8 @@
+{
+  "name": "mailflow",
+  "private": true,
+  "scripts": {
+    "verify": "node scripts/validate.cjs && node --test tests/*.test.cjs",
+    "verify:postgres": "sh scripts/test-persistence-postgres.sh"
+  }
+}

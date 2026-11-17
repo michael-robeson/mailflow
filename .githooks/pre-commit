@@ -6,5 +6,5 @@ cd "$root"
 
 echo "Checking staged workflow exports and secrets..."
 node scripts/validate.cjs --staged
-echo "Running synthetic tests from the working tree..."
-node --test tests/*.test.cjs
+echo "Running canonical verification against the working tree..."
+npm run verify
