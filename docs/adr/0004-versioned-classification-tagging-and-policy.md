@@ -108,11 +108,15 @@ legacy `action` values:
 ```
 
 Proposed values are `high`, `normal`, `low`, and `unset` for priority;
-`immediate`, `daily`, `weekly`, or `null` for `notificationCadence`; and
+`immediate`, `daily`, `weekly`, or `none` for v2 policy output
+`notificationCadence`; and
 `review`, `respond`, `reference`, or `none` for `recommendedAction`. Priority
 is `unset` only for insufficient evidence and invalid or unsupported inputs;
 a valid, matched classification uses `high`, `normal`, or `low`. The exact
 category defaults are:
+
+Effective configuration snapshots continue to represent an ineligible cadence
+as `null`; v2 policy output maps that value to `none`.
 
 | Existing classification category | Priority | Notification eligible | Notification cadence | Recommended workflow action |
 | --- | --- | --- | --- | --- |
@@ -123,22 +127,23 @@ category defaults are:
 | `application_update` | `normal` | `true` | `daily` | `review` |
 | `job_alert` | `low` | `true` | `weekly` | `reference` |
 | `recruiter_contact` | `normal` | `true` | `immediate` | `respond` |
-| `other` / insufficient evidence | `unset` | `false` | `null` | `none` |
+| `other` / insufficient evidence | `unset` | `false` | `none` | `none` |
 
 These are separate policy dimensions: priority is not calculated from
 notification cadence. The cadence and legacy action values preserve the
 existing version 1.0 policy defaults. For invalid, unsupported, or
 insufficient evidence, fail closed with priority `unset`, no notification,
-null cadence, legacy action `none`, and recommended action `none`.
+cadence `none`, legacy action `none`, and recommended action `none`.
 
 The existing version 1.0 `action` field remains a compatibility projection:
 it is `immediate`, `daily`, or `weekly` when notification is eligible and
 `none` otherwise. Legacy category overrides retain their current meanings.
-Eligibility and cadence must be consistent: an ineligible decision has null
-cadence and legacy action `none`; an eligible decision has one supported
-cadence and the matching legacy action. `recommendedAction` is independent of
-notification cadence: for example, a message may recommend `respond` without
-being notification-eligible. Existing invalid-input and
+Eligibility and cadence must be consistent: an ineligible v2 decision has
+cadence `none` and legacy action `none`; an eligible decision has one
+supported cadence and the matching legacy action. In effective configuration,
+an ineligible cadence is represented as `null`. `recommendedAction` is
+independent of notification cadence: for example, a message may recommend
+`respond` without being notification-eligible. Existing invalid-input and
 insufficient-evidence fail-closed behavior remains and sets priority to
 `unset`. A user may override supported category policy dimensions subject to
 validation. The existing `{ overrides: { category: action } }` configuration
