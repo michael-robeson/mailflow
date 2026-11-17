@@ -11,12 +11,28 @@ the next feature. Respect any narrower task instructions; a request to
 document or plan the lifecycle does not authorize performing its GitHub or
 Git operations.
 
+When the user authorizes completing the full feature lifecycle, that
+authorization covers routine, task-scoped commits, publishing the feature
+branch, creating the PR, monitoring required CI, merging once all required CI,
+review, approval, and branch-protection conditions are satisfied, and normal
+post-merge cleanup and synchronization. Stage and commit only files in the
+authorized task scope. Do not request redundant confirmation for each routine
+Git or GitHub operation. Stop for user intervention only when a required
+condition cannot be satisfied, a review issue or merge conflict remains
+unresolved, or an administrator bypass needs authorization not already
+granted. Full-lifecycle authorization alone does not authorize an
+administrator bypass; retain the per-PR authorization requirement below. An
+explicit instruction to stop at a particular lifecycle boundary takes
+precedence over broader lifecycle authorization.
+
 ## Begin from synchronized develop
 
 1. Inspect the current branch and worktree before switching. Preserve
    unrelated untracked files. Do not automatically stash, reset, clean, or
-   overwrite existing work. If tracked changes could be carried into or lost
-   by a switch, stop and ask how to proceed.
+   overwrite existing work. If unrelated tracked changes would interfere with
+   the lifecycle, prefer a separate clean worktree where practical rather
+   than carrying them across a switch. If no safe worktree is practical, stop
+   and ask how to proceed.
 2. Fetch `origin`, switch to local `develop` only when safe, then synchronize
    it with `origin/develop` using a fast-forward-only operation. If local
    `develop` cannot fast-forward, stop; do not reset it or merge divergent
@@ -33,9 +49,12 @@ Git operations.
    authorized committing. Stage only task-related files; do not amend commits
    unless explicitly asked. Never force-push a protected branch.
 2. Run `npm run verify` before milestone integration. It is the canonical
-   non-mutating check; wait for its required checks to finish and resolve
-   failures before proposing a merge. Do not run PostgreSQL integration unless
-   separately authorized.
+   non-mutating local check; wait for all required CI checks, including any
+   required PostgreSQL CI, to finish and resolve failures before merging.
+   Successful required PostgreSQL CI is sufficient by default. Local
+   `npm run verify:postgres` runs disposable containers and requires separate
+   explicit authorization; full-lifecycle authorization does not include
+   that local execution.
 3. When authorized to publish the work, push the feature branch and create a
    PR targeting `develop` (for example, `git push -u origin <feature-branch>`
    and `gh pr create --base develop --head <feature-branch>`). Confirm the PR
@@ -83,11 +102,12 @@ Git operations.
    If Git refuses because commits are not recognized as merged, stop and
    investigate; do not force-delete or use destructive Git cleanup commands.
 4. Create the next descriptively named feature branch from synchronized
-   `develop` only when the next scope is clear and authorized. If it is
-   unclear, stop on `develop` and ask. Create it with
+   `develop` only when a subsequent scope is already clear and authorized.
+   If no next scope was provided, finish on synchronized `develop` without
+   asking for one. Create an authorized next branch with
    `git switch -c feature/<next-short-kebab-case-scope>`. Verify the remote
-   deletion, local synchronization, and new branch base before reporting
-   completion.
+   deletion and local synchronization, and verify the new branch base when
+   creating one, before reporting completion.
 
 ## Safety stops
 
