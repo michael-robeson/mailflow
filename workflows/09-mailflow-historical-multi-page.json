@@ -12,7 +12,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "const { createHistoricalState, openHistoricalForN8n } = require('mailflow-pipeline');\nconst ingestionId = '';\nconst accountKey = '';\nconst query = '';\nconst pageSize = 25;\nconst maxMessages = 100;\nconst config = { ingestionId, accountKey, query, pageSize, maxMessages };\ncreateHistoricalState(config);\nreturn [{ json: await openHistoricalForN8n(config) }];"
+        "jsCode": "const { createHistoricalState, openHistoricalForN8n } = require('mailflow-pipeline');\nconst ingestionId = '';\nconst accountKey = '';\nconst query = '';\nconst pageSize = 25;\nconst maxMessages = 100;\nconst enableM1 = false;\nconst configurationRevisionId = null;\nconst config = { ingestionId, accountKey, query, pageSize, maxMessages, enableM1, configurationRevisionId };\ncreateHistoricalState(config);\nreturn [{ json: await openHistoricalForN8n(config) }];"
       },
       "id": "09b00000-0000-4000-8000-000000000002",
       "name": "Configure Ingestion",

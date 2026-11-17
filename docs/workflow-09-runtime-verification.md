@@ -15,8 +15,10 @@ unbound, and unchanged.
 ## What is exercised
 
 The runtime uses n8n `2.47.4`, PostgreSQL `17.11-alpine`, the existing
-`mailflow-pipeline` modules, and migrations 001 and 002. It gives the parent
-an ingestion UUID and opaque account key, page size 2, and maximum 10.
+`mailflow-pipeline` modules, and migrations 001, 002, and 003. Its temporary
+parent explicitly enables M1 with built-in configuration defaults
+(`configurationRevisionId: null`), an ingestion UUID, an opaque account key,
+page size 2, and maximum 10.
 The child uses GET-only HTTP Request nodes against a local fixture service
 instead of Gmail; no OAuth credential is configured.
 
@@ -27,7 +29,10 @@ The fixture returns:
 3. `w09_msg_005`, with no continuation token.
 
 Each message uses the synthetic “Job alert” fixture already used by the
-historical persistence tests. In the temporary child copy only, a test-only
+historical persistence tests. The harness verifies five versioned historical
+evaluations and tag assignments, no current-effective selections, and the
+category-based `job_alert`/weekly policy default, alongside the unchanged v1
+historical results. In the temporary child copy only, a test-only
 HTTP marker runs after the awaited page-persistence call and then returns the
 original page result. The fixture requires a marker for page N before serving
 page N+1, and records the ordered list, message, and checkpoint events. This
@@ -125,7 +130,7 @@ docker compose -p "$W09_PROJECT" \
 ```
 
 The bootstrap creates separate `mailflow_owner` and restricted `mailflow_app`
-roles. Apply both migrations as `mailflow_owner`; the connection uses the
+roles. Apply all three migrations as `mailflow_owner`; the connection uses the
 disposable local PostgreSQL administrator only to assume the migration-owner
 role:
 
@@ -133,7 +138,10 @@ role:
 node scripts/verify-workflow-09-compose-project.cjs \
   "$W09_RUNTIME_DIR" "$W09_PROJECT" assert-owned
 set -o pipefail
-for migration in 001_persistence_foundation.sql 002_historical_ingestion.sql; do
+for migration in \
+  001_persistence_foundation.sql \
+  002_historical_ingestion.sql \
+  003_versioned_evaluation_persistence.sql; do
   {
     printf 'SET ROLE mailflow_owner;\n'
     cat "$W09_RUNTIME_DIR/migrations/$migration"
@@ -146,7 +154,7 @@ done
 ```
 
 Grant the runtime role only the application-table access required by the
-existing persistence adapter:
+v1, historical, and versioned persistence adapters:
 
 ```bash
 node scripts/verify-workflow-09-compose-project.cjs \
@@ -163,6 +171,10 @@ GRANT SELECT ON mailflow.schema_migrations TO mailflow_app;
 GRANT SELECT, INSERT ON mailflow.messages, mailflow.classifications,
   mailflow.policy_decisions, mailflow.workflow_runs, mailflow.action_log,
   mailflow.historical_ingestions, mailflow.historical_checkpoints TO mailflow_app;
+GRANT SELECT, INSERT ON mailflow.account_configuration_revisions,
+  mailflow.versioned_evaluation_batches, mailflow.evaluations,
+  mailflow.evaluation_tag_assignments, mailflow.tag_corrections TO mailflow_app;
+GRANT SELECT, INSERT, UPDATE ON mailflow.current_effective_evaluations TO mailflow_app;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA mailflow TO mailflow_app;
 SQL
 ```
@@ -226,11 +238,13 @@ docker compose -p "$W09_PROJECT" \
 
 The SQL exits with an error unless there are sequential checkpoints 1–3,
 the final checkpoint reports 5 discovered and persisted messages with no
-continuation token, and the database has exactly five runs, message
-identities, classifications, and policy decisions for the synthetic account.
-It prints each checkpoint’s page number, timestamp, cumulative discovered and
-persisted counts, failure count, and `has_more` flag. The final sanitized
-report in the n8n editor must show `pages=3`, `discovered=5`,
+continuation token, and the database has exactly five v1 runs, message
+identities, classifications, and policy decisions plus five versioned
+historical evaluations and category-matching built-in tag assignments. It
+also rejects any current-effective selection. It prints each checkpoint’s
+page number, timestamp, cumulative discovered and persisted counts, failure
+count, and `has_more` flag. The final sanitized report must show
+`pages=3`, `discovered=5`,
 `processed=5`, `persisted=5`, `previouslyProcessed=0`, `failed=0`,
 `stopReason=exhausted`, and `hasMore=false`. Record only that report and the
 fixture/SQL evidence; do not save or share raw node execution output.
@@ -265,6 +279,50 @@ inline Execute Workflow node. This was nonblocking for the successful run,
 but remains pending investigation; it is not considered resolved by the
 runtime result.
 
+## Recorded M1 runtime result (2026-11-17)
+
+The updated parent and embedded child were imported inactive into a fresh
+project using this harness. The actual n8n engine was exercised with one-shot
+`n8n execute` containers because this Docker Compose engine did not assign a
+host port for the editor binding. No workflow was activated, no Gmail
+credential was configured, and every HTTP request went to the synthetic
+fixture. A direct `n8n execute` inside the long-running n8n container could
+not start a second task broker on its occupied port; the one-shot Compose
+execution succeeded. The container logged that its optional Python runner
+was unavailable, but the Node Code nodes and child workflow executed.
+
+The M1-enabled built-in-default run and the M1-disabled compatibility run each
+processed three pages and five messages, with checkpoints 1–3. The enabled
+run stored five historical evaluations and five built-in assignments whose
+tag IDs matched their classification categories; its v1 records were also
+present. The disabled run stored no versioned evaluations and retained five
+v1 runs, classifications, policy decisions, and three checkpoints.
+
+A separate account-scoped configuration revision was pinned through the
+parent. All five historical evaluations recorded that revision and version.
+Its `job_alert` override changed priority to `high` and recommended action to
+`review`, while notification eligibility and cadence remained `true` and
+`weekly`, respectively; the legacy action remained `weekly`.
+
+Two retry scenarios injected permission failures in the disposable database.
+When v1 `workflow_runs` insertion failed after the first page’s M1 writes,
+the first attempt left two M1 evaluations/tags, no v1 records, and no
+checkpoint. Retrying with the same ingestion configuration completed with
+five unique M1 evaluations/tags, five v1 runs, and three checkpoints. When
+checkpoint insertion failed after both M1 and v1 message persistence, the
+first attempt left two records in each history and no checkpoint. The same
+configuration then retried with two previously processed messages and
+completed with five unique M1 evaluations/tags, five v1 runs, and three
+checkpoints. All scenarios ended with zero current-effective rows. Temporary
+database grants used to inject the failures were restored.
+
+Fixture logs showed no rejected requests. Each successful run had three
+ordered list events, five detail events, and checkpoints 1–3 before any next
+page; each failed run stopped on page one without a checkpoint marker. The
+web editor itself was not exercised because no host port was allocated. The
+isolated project and temporary staging files are being retained for review;
+cleanup requires separate approval.
+
 ## Cleanup — require separate explicit approval
 
 After evidence has been reviewed and cleanup is authorized, verify that the
@@ -297,20 +355,19 @@ same ingestion concurrently.
 
 ## Scope and gaps
 
-This increment supplies the successful three-page fixture, isolated Compose
-description, temporary workflow preparation, and deterministic evidence
-query. The checked-in workflow exports and reusable application modules were
-not modified. The runtime result above verifies successful exhaustion after
-the third page; it does not verify the following runtime scenarios:
+The increment modifies the 09 workflow exports, pipeline persistence
+integration, runtime preparation/verification tooling, and related docs/tests.
+The recorded runtime evidence verifies the requested M1 and retry scenarios.
+It does not verify:
 
 - Stopping at the configured message limit.
-- Resuming from a persisted checkpoint.
-- Idempotent replay of previously processed messages.
+- Resuming from a checkpoint committed on an earlier page.
 - Retrieval failure.
-- Persistence failure.
+- M1 persistence failure before v1 persistence.
+- Execution through the web editor; the local host port was not published.
 
-Offline synthetic/unit tests cover related logic without exercising those
-scenarios in n8n. `tests/workflow-09-runtime.test.cjs` tests fixture ordering
+Offline synthetic/unit tests cover related logic for those remaining gaps.
+`tests/workflow-09-runtime.test.cjs` tests fixture ordering
 and its checkpoint gate, temporary workflow configuration, isolation
 configuration, and evidence-query construction.
 `tests/historical-ingestion.test.cjs` tests modeled pagination,
@@ -326,10 +383,10 @@ contains no Gmail OAuth credentials and has no external container network. Do
 not reuse its temporary passwords, account key, or database for any other
 environment.
 
-The successful run confirmed Task Runner package loading and execution of the
-embedded child with the pinned n8n `2.47.4` image. It does not validate other
-n8n versions, live-provider behavior, or unrun failure/resume/replay
-scenarios. An optional n8n MCP-registry lookup failed DNS during startup; no
-external connectivity was enabled, and it was not required for this run.
+The actual engine runs confirmed execution of the embedded child with the
+pinned n8n `2.47.4` image. They do not validate other n8n versions or
+live-provider behavior. An optional n8n MCP-registry lookup failure recorded
+for the earlier editor run is unrelated to these scenarios; no external
+connectivity was enabled or required.
 Continue to treat execution data, logs, database contents, and temporary
 credentials as sensitive, even in this synthetic environment.

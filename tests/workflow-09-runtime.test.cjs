@@ -27,6 +27,47 @@ function listen(server) {
   });
 }
 
+async function executeProcessAndPersistPage({ state, requests, responses }) {
+  const { child } = configureWorkflows({
+    ingestionId: '00000000-0000-4000-8000-000000000001',
+    accountKey: 'w09_synthetic_test',
+  });
+  const code = child.nodes.find((node) => node.name === 'Process and Persist Page').parameters
+    .jsCode;
+  const calls = [];
+  const requireStub = (name) => {
+    assert.equal(name, 'mailflow-pipeline');
+    return {
+      processGmailResponse: (id, response, index) => ({
+        messageId: id,
+        decision: { status: response.status ?? 'decided' },
+        index,
+      }),
+      persistVersionedHistoricalMessagesForN8n: async (actualState, messages) => {
+        calls.push({ type: 'm1', state: actualState, messages });
+        return { count: messages.length, alreadyProcessed: 0 };
+      },
+      persistHistoricalPageForN8n: async (actualState, processed) => {
+        calls.push({ type: 'v1', state: actualState, processed });
+        return { state: actualState, retryCurrentPage: false };
+      },
+    };
+  };
+  const lookup = (name) => {
+    if (name === 'Prepare Page') return { first: () => ({ json: { state, previous: 'cursor' } }) };
+    if (name === 'Expand Messages') return { all: () => requests };
+    throw new Error(`Unexpected workflow node lookup: ${name}`);
+  };
+  const input = { all: () => responses };
+  const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+  const output = await new AsyncFunction('require', '$', '$input', code)(
+    requireStub,
+    lookup,
+    input,
+  );
+  return { calls, output };
+}
+
 test('synthetic Gmail fixture serves the three pages and five full messages in order', async (t) => {
   const events = [];
   const server = createServer({ onEvent: (event) => events.push(event) });
@@ -172,6 +213,63 @@ test('temporary workflows preserve the child call, use only the local fixture, a
     .jsCode;
   assert.match(configureCode, /const pageSize = 2/);
   assert.match(configureCode, /const maxMessages = 10/);
+  assert.match(configureCode, /const enableM1 = false/);
+  assert.match(configureCode, /const configurationRevisionId = null/);
+  const enabled = configureWorkflows({
+    ingestionId: '00000000-0000-4000-8000-000000000001',
+    accountKey: 'w09_synthetic_test',
+    enableM1: true,
+    configurationRevisionId: 9,
+  });
+  const enabledCode = enabled.parent.nodes.find((node) => node.name === 'Configure Ingestion')
+    .parameters.jsCode;
+  assert.match(enabledCode, /const enableM1 = true/);
+  assert.match(enabledCode, /const configurationRevisionId = 9/);
+  assert.throws(
+    () =>
+      configureWorkflows({
+        ingestionId: '00000000-0000-4000-8000-000000000001',
+        accountKey: 'w09_synthetic_test',
+        configurationRevisionId: 9,
+      }),
+    /requires explicit M1 enablement/,
+  );
+});
+
+test('workflow 09 only invokes versioned evaluation when explicitly enabled', async () => {
+  const state = {
+    pageSize: 2,
+    versionedEvaluation: { enabled: true, configurationRevisionId: null },
+  };
+  const requests = [{ json: { id: 'm1' } }, { json: { id: 'm2' } }];
+  const responses = [
+    { pairedItem: { item: 1 }, json: { status: 'decided', body: { id: 'm2' } } },
+    { pairedItem: { item: 0 }, json: { status: 'retrieval_error', body: null } },
+  ];
+
+  const m1Result = await executeProcessAndPersistPage({ state, requests, responses });
+  assert.deepEqual(
+    m1Result.calls.map(({ type }) => type),
+    ['m1', 'v1'],
+  );
+  assert.deepEqual(m1Result.calls[0].messages, [{ id: 'm2' }]);
+  assert.equal(m1Result.calls[0].state, state);
+  assert.equal(m1Result.calls[1].state, state);
+  assert.equal(m1Result.output[0].json.previous, 'cursor');
+  assert.deepEqual(
+    m1Result.calls[1].processed.map(({ messageId }) => messageId),
+    ['m1', 'm2'],
+  );
+
+  const v1Result = await executeProcessAndPersistPage({
+    state: { pageSize: 2, versionedEvaluation: null },
+    requests,
+    responses,
+  });
+  assert.deepEqual(
+    v1Result.calls.map(({ type }) => type),
+    ['v1'],
+  );
 });
 
 test('success evidence asserts three ordered checkpoints and five unique decisions', () => {
@@ -184,6 +282,12 @@ test('success evidence asserts three ordered checkpoints and five unique decisio
   assert.match(sql, /final_state->>'persisted' <> '5'/);
   assert.match(sql, /run_count <> 5 OR message_count <> 5/);
   assert.match(sql, /classification_count <> 5 OR decision_count <> 5/);
+  assert.match(sql, /versioned_evaluation_count <> 5 OR historical_evaluation_count <> 5/);
+  assert.match(sql, /current_effective_count <> 0 OR tag_assignment_count <> 5/);
+  assert.match(sql, /policy->>'action' <> 'weekly'/);
+  assert.match(sql, /t\.tag_id <> \(e\.classification->>'category'\)/);
+  assert.match(sql, /t\.provenance_type <> 'built_in_rule'/);
+  assert.match(sql, /is_historical_replay/);
   assert.match(sql, /final_state->'nextPageToken' <> 'null'::jsonb/);
   assert.doesNotMatch(sql, /AS\s+next_page_token/i);
 });
@@ -238,9 +342,17 @@ test('runtime preparation keeps secrets and workflow copies in a private temp di
     JSON.parse(parent.nodes.find((node) => node.name === 'Run One Page').parameters.workflowJson),
     child,
   );
+  const configuredCode = parent.nodes.find((node) => node.name === 'Configure Ingestion').parameters
+    .jsCode;
+  assert.match(configuredCode, /const enableM1 = true/);
+  assert.match(configuredCode, /const configurationRevisionId = null/);
   assert.equal(fs.existsSync(path.join(runtimeDir, 'package/index.cjs')), true);
   assert.equal(
     fs.existsSync(path.join(runtimeDir, 'migrations/002_historical_ingestion.sql')),
+    true,
+  );
+  assert.equal(
+    fs.existsSync(path.join(runtimeDir, 'migrations/003_versioned_evaluation_persistence.sql')),
     true,
   );
 });

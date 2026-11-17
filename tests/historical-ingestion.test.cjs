@@ -10,6 +10,8 @@ const {
   openHistoricalIngestion,
   prepareHistoricalPage,
   persistHistoricalPage,
+  messageRunId,
+  versionedMessageRunId,
   saveHistoricalCheckpoint,
   historicalReport,
   historicalLoopResult,
@@ -40,6 +42,33 @@ function message(id, number = 1) {
     number,
   );
 }
+
+test('M1 historical mode is opt-in and pins its configuration revision to the ingestion', async () => {
+  const v1State = await openHistoricalIngestion(fakePool(), config);
+  assert.equal(Object.hasOwn(v1State, 'versionedEvaluation'), false);
+
+  const pool = fakePool();
+  const enabledConfig = { ...config, enableM1: true, configurationRevisionId: 7 };
+  const enabledState = await openHistoricalIngestion(pool, enabledConfig);
+  assert.deepEqual(enabledState.versionedEvaluation, {
+    enabled: true,
+    configurationRevisionId: 7,
+  });
+  assert.deepEqual(await openHistoricalIngestion(pool, enabledConfig), enabledState);
+  await assert.rejects(
+    openHistoricalIngestion(pool, { ...enabledConfig, configurationRevisionId: 8 }),
+    /different configuration/,
+  );
+  await assert.rejects(
+    openHistoricalIngestion(pool, { ...config, configurationRevisionId: 7 }),
+    /requires explicit M1 enablement/,
+  );
+
+  const runId = versionedMessageRunId(ingestionId, config.accountKey, 'message-1');
+  assert.match(runId, /^[0-9a-f]{8}-[0-9a-f]{4}-8[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+  assert.equal(versionedMessageRunId(ingestionId, config.accountKey, 'message-1'), runId);
+  assert.notEqual(messageRunId(ingestionId, config.accountKey, 'message-1'), runId);
+});
 
 function fakePool() {
   const runs = new Map();
