@@ -90,20 +90,20 @@ Follow those documents for detailed procedures; do not duplicate them here.
   security concerns, destructive operations, and unresolved failures.
 - For behavior changes, add or update focused synthetic tests that exercise
   the requested behavior. Use existing helpers and test patterns.
-- From the repository root, the documented offline checks are:
+- From the repository root, run the canonical offline verification command:
 
   ```sh
-  node scripts/validate.cjs
-  node --test tests/*.test.cjs
+  npm run verify
   ```
 
-  They do not contact Gmail or require n8n, containers, or a database.
-  The PostgreSQL integration test uses disposable containers and is separate;
-  consult [docs/setup.md](docs/setup.md) and
+  It runs the repository validator and synthetic tests; it does not contact
+  Gmail or require n8n, containers, or a database. The PostgreSQL integration
+  test uses disposable containers and is separate. Run
+  `npm run verify:postgres` only with explicit approval; consult
+  [docs/setup.md](docs/setup.md) and
   [docs/postgres-persistence.md](docs/postgres-persistence.md) before running
-  it; running it requires explicit approval because it creates and removes
-  disposable containers. Do not run live or deployed integration tests unless
-  specifically authorized.
+  it. Do not run live or deployed integration tests unless specifically
+  authorized.
 - The validator's `--staged` mode checks staged file contents. The pre-commit
   hook runs tests against the working tree, so stage related code and tests
   together and verify the intended snapshot. CI remains an independent gate.

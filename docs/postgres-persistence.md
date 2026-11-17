@@ -178,9 +178,9 @@ must not log raw exceptions or sensitive inputs.
    the runtime role, not the owner or administrator.
 
 The isolated regression test applies migration 1 twice and tests the adapter
-using a non-superuser insert/select role. Run `sh scripts/test-persistence-postgres.sh`
-only with approval to create and remove disposable containers. It requires
-the locally cached PostgreSQL 17.11 and n8n 2.47.4 images, uses a networkless
+using a non-superuser insert/select role. Run `npm run verify:postgres` only
+with approval to create and remove disposable containers. It requires the
+locally cached PostgreSQL 17.11 and n8n 2.47.4 images, uses a networkless
 temporary database with synthetic data, and does not contact the existing
 database or Gmail. Its trust authentication is strictly for that isolated
 test and must never be copied into a deployment.

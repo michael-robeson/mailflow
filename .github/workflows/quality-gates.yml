@@ -19,10 +19,8 @@ jobs:
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22'
-      - name: Validate workflow exports and scan for secrets
-        run: node scripts/validate.cjs
-      - name: Run synthetic regression tests
-        run: node --test tests/*.test.cjs
+      - name: Run offline quality verification
+        run: npm run verify
 
   postgres-persistence:
     runs-on: ubuntu-latest
@@ -36,4 +34,4 @@ jobs:
           docker pull postgres:17.11-alpine
           docker pull docker.n8n.io/n8nio/n8n:2.47.4
       - name: Test persistence against isolated PostgreSQL
-        run: sh scripts/test-persistence-postgres.sh
+        run: npm run verify:postgres

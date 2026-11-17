@@ -95,9 +95,10 @@ The workflow must be imported and its credential bound locally.
 
 ## Quality gates
 
-Pull requests targeting `develop` run offline synthetic tests, validate workflow
-JSON and safety rules, scan repository files for common secret patterns, and
-test persistence against a disposable isolated PostgreSQL instance.
+Run `npm run verify` for offline validation and synthetic tests. The
+approval-required local PostgreSQL integration is available as
+`npm run verify:postgres`. Pull requests targeting `develop` run both commands,
+including the isolated disposable PostgreSQL test.
 Install the local pre-commit hook and run the same checks as described in
 [local validation](docs/setup.md#local-validation-and-git-hooks).
 
