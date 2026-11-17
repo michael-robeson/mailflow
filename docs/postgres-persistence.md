@@ -5,7 +5,10 @@ November 13, 2026, migration 1 was applied as the dedicated owner to a new
 local application database, and synthetic persistence was verified. The
 existing n8n PostgreSQL server was not migrated. Synthetic and separately
 approved live integration have been verified; further live runs require
-separate approval. See [live persistence](live-persistence.md).
+separate approval. Migration 3 and the versioned M1 adapter are verified only
+in the disposable isolated PostgreSQL test; they have not been applied to a
+normal runtime database or integrated into a workflow. See
+[live persistence](live-persistence.md).
 
 ## Isolation and data model
 
@@ -92,6 +95,11 @@ Migration 1 creates the `mailflow` schema:
 | `policy_decisions` | Append-only action, status, explanation codes and timestamp; exactly one may be stored per classification. |
 | `action_log` | Future audit events with caller-supplied UUID, account-scoped message reference, action and outcome codes, and event/recording timestamps. It performs no Gmail action. |
 | `schema_migrations` | Applied migration versions and timestamps. |
+| `historical_ingestions`, `historical_checkpoints` | Migration 2's immutable ingestion configuration and append-only page checkpoints. |
+| `account_configuration_revisions` | Migration 3's immutable, account-scoped complete snapshots, generated revision IDs and versions, idempotency request IDs, and deterministic digests. |
+| `versioned_evaluation_batches`, `evaluations`, `evaluation_tag_assignments` | Migration 3's idempotent evaluation batches, immutable v2 policy/classification history and per-evaluation tag provenance. |
+| `tag_corrections` | Migration 3's append-only, account-scoped user tag corrections in deterministic database sequence order. |
+| `current_effective_evaluations` | Migration 3's separate mutable pointer to the explicitly selected effective evaluation per account/message. |
 
 No sender, subject, body, raw headers, Gmail thread, credential, or raw error
 is stored. IDs, account keys, dates, decision codes and hashes are still
@@ -138,6 +146,51 @@ retention, and access controls before using that table. Database/driver errors
 may include SQL details or values: callers must handle failures explicitly but
 must not log raw exceptions or sensitive inputs.
 
+## M1 versioned persistence
+
+`lib/versioned-persistence.cjs` exports `createVersionedPersistenceAdapter(pool)`
+as a separate additive API; `lib/persistence.cjs` and its v1 batch behavior
+remain unchanged. The versioned adapter persists account configuration
+snapshots, evaluation batches, per-evaluation tag assignments, user tag
+corrections, current-effective selection, and current-state reads. Migration 3
+adds the corresponding tables without changing migrations 1 or 2.
+
+Configuration revision requests use a caller-supplied UUID for idempotent
+retry. The database generates each revision ID and the next account-scoped
+version while holding a transaction-scoped account lock. The full normalized
+snapshot is stored once per revision, with the deterministic digest from the
+effective-configuration contract. A repeated request with the same digest
+returns the original revision; reusing its request ID for different input
+fails.
+
+`persistEvaluationBatch` validates the resolved configuration, classification,
+effective tags, and v2 policy contract before connecting. It stores the
+configuration revision reference, built-in defaults version, classification,
+v2 decision, and tag assignments in one transaction. V2 policy output stores
+`notificationCadence: "none"` when ineligible; a configuration snapshot
+continues to store a disabled cadence as `null`. The run UUID and normalized
+input hash provide idempotent retries. A per-item `makeCurrent` choice is
+required. Historical replay batches must set `isHistoricalReplay: true` and
+cannot select a current evaluation. `selectCurrentEffectiveEvaluation` is an
+explicit operation for selecting an already persisted evaluation. Neither
+operation delivers notifications or modifies Gmail.
+
+Tag corrections use append-only `add`/`remove` events tied to an account,
+message, base evaluation, and tag defined in that evaluation's configuration
+snapshot. A caller-supplied correction UUID makes retries idempotent. Effective
+tags are resolved by applying corrections in database sequence order; later
+events can reverse earlier ones. Configuration revisions, evaluation batches,
+evaluations, assignments, and corrections reject updates/deletes. The
+current-effective pointer is deliberately separate and may only be changed
+through explicit selection.
+
+`getCurrentEffectiveEvaluation` first reads that pointer. Only when no pointer
+exists does it perform a read-only legacy fallback, and only for one complete,
+valid, unambiguous v1 classification/policy pair. Missing, invalid, or
+ambiguous legacy state is returned as unresolved. Legacy configuration
+provenance is returned as `null`, never inferred. Historical ingestion and its
+checkpoint adapter continue to use the unchanged v1 persistence path.
+
 ## Provisioning and migration after approval
 
 1. Back up the existing n8n installation independently. Provision a separate
@@ -162,13 +215,18 @@ must not log raw exceptions or sensitive inputs.
    applied migration. The ledger records versions, not checksums: verify
    migration provenance and version before deployment.
 4. As owner, revoke public access to the `mailflow` schema and grant the
-   runtime role only:
+   runtime role only the required tables. After applying migration 3, extend
+   the original v1 grants as follows:
 
    ```sql
    GRANT USAGE ON SCHEMA mailflow TO mailflow_app;
    GRANT SELECT ON mailflow.schema_migrations TO mailflow_app;
    GRANT SELECT, INSERT ON mailflow.messages, mailflow.classifications,
      mailflow.policy_decisions, mailflow.workflow_runs, mailflow.action_log TO mailflow_app;
+   GRANT SELECT, INSERT ON mailflow.account_configuration_revisions,
+     mailflow.versioned_evaluation_batches, mailflow.evaluations,
+     mailflow.evaluation_tag_assignments, mailflow.tag_corrections TO mailflow_app;
+   GRANT SELECT, INSERT, UPDATE ON mailflow.current_effective_evaluations TO mailflow_app;
    GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA mailflow TO mailflow_app;
    ```
 
@@ -177,8 +235,9 @@ must not log raw exceptions or sensitive inputs.
    inherited grants defeat those restrictions. The connection pool should use
    the runtime role, not the owner or administrator.
 
-The isolated regression test applies migration 1 twice and tests the adapter
-using a non-superuser insert/select role. Run `npm run verify:postgres` only
+The isolated regression test applies migrations 1–3 twice and tests both
+versioned and v1 adapters, plus historical checkpoints, using a non-superuser
+runtime role. Run `npm run verify:postgres` only
 with approval to create and remove disposable containers. It requires the
 locally cached PostgreSQL 17.11 and n8n 2.47.4 images, uses a networkless
 temporary database with synthetic data, and does not contact the existing
