@@ -11,6 +11,17 @@ the next feature. Respect any narrower task instructions; a request to
 document or plan the lifecycle does not authorize performing its GitHub or
 Git operations.
 
+When the user authorizes completing the full feature lifecycle, that
+authorization includes merging the PR once all required CI, review, approval,
+and branch-protection conditions are satisfied. Do not request redundant
+confirmation after those gates pass. Stop for user intervention only when a
+required condition cannot be satisfied, a review issue or merge conflict
+remains unresolved, or an administrator bypass needs authorization not
+already granted. Full-lifecycle authorization alone does not authorize an
+administrator bypass; retain the per-PR authorization requirement below. An
+explicit instruction to stop at a particular lifecycle boundary takes
+precedence over broader lifecycle authorization.
+
 ## Begin from synchronized develop
 
 1. Inspect the current branch and worktree before switching. Preserve
