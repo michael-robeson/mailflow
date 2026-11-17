@@ -110,6 +110,8 @@ dependencies. The approval-required local PostgreSQL integration is available
 as `npm run verify:postgres`. Pull requests targeting `develop` run the
 canonical checks and the isolated disposable PostgreSQL test. Install the
 local pre-commit hook and see [local validation](docs/setup.md#local-validation-and-git-hooks).
+Follow the [feature lifecycle procedure](.github/skills/feature-lifecycle/SKILL.md)
+for branch creation, PR review and merge, and safe post-merge cleanup.
 
 ## Project roadmap
 

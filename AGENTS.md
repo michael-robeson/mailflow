@@ -34,6 +34,9 @@ current provider integration. This repository does not use .NET Aspire.
 - `config/` — currently empty placeholders, not loaded runtime rules.
 - `tests/` — offline synthetic tests and separate integration tests.
 - `scripts/` — validation, hook setup, and opt-in database test utilities.
+- `.github/skills/feature-lifecycle/SKILL.md` — reusable feature branch, PR,
+  merge, cleanup, and next-branch procedure; follow it for feature lifecycle
+  work.
 - `.github/skills/verify-workflow/SKILL.md` — reusable workflow verification
   procedure; use synthetic data and distinguish simulation from actual n8n
   behavior.

@@ -40,6 +40,17 @@ warnings alongside the coverage report. Run `npm run format:check` or
 `npm run lint` for either non-mutating static check alone. `npm run format`
 and `npm run lint:fix` modify maintained CommonJS source, tests, and scripts.
 
+## Feature branches and pull requests
+
+Start feature work from synchronized `develop` on a descriptively named
+feature branch. Before opening a PR targeting `develop`, run `npm run verify`,
+wait for required CI checks, and review the PR's scope and outstanding
+conversations. After a confirmed merge, verify remote branch deletion,
+fast-forward local `develop`, safely delete the merged local branch, and
+prepare the next feature branch only when its scope is clear. Follow the
+[feature lifecycle skill](../.github/skills/feature-lifecycle/SKILL.md) for
+the full review, merge, administrator-bypass, and safety requirements.
+
 The validator scans tracked and non-ignored untracked files, checks workflow
 JSON for syntax and duplicate decoded object keys, and checks workflow safety.
 The scanner reports filenames and categories, never matching secret values.
