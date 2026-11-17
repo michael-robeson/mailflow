@@ -21,7 +21,7 @@ const result = spawnSync(
     '--experimental-test-coverage',
     '--test-coverage-include=lib/**/*.cjs',
     '--test-reporter=tap',
-    '--test-reporter-destination=stdout',
+    '--test-reporter-destination=coverage/synthetic.tap',
     '--test-reporter=lcov',
     '--test-reporter-destination=coverage/lcov.info',
     ...testFiles,
@@ -30,6 +30,12 @@ const result = spawnSync(
 );
 
 if (result.error) throw result.error;
+const tapPath = path.join(coverageDirectory, 'synthetic.tap');
+if (fs.existsSync(tapPath)) {
+  process.stdout.write(fs.readFileSync(tapPath, 'utf8'));
+} else {
+  console.error('Test results unavailable: coverage/synthetic.tap was not produced');
+}
 const lcovPath = path.join(coverageDirectory, 'lcov.info');
 if (fs.existsSync(lcovPath)) {
   const modules = parseLcov(fs.readFileSync(lcovPath, 'utf8'));
