@@ -169,6 +169,8 @@ them.
 
 ## Decisions and tradeoffs
 
+See the [ADR index](adr/README.md) for recorded architectural decisions.
+
 - **n8n instead of custom orchestration:** visual workflows and existing
   integrations accelerate development, but require careful versioning,
   credential management, and execution-data controls.
