@@ -175,6 +175,13 @@ cannot select a current evaluation. `selectCurrentEffectiveEvaluation` is an
 explicit operation for selecting an already persisted evaluation. Neither
 operation delivers notifications or modifies Gmail.
 
+The opt-in [`processVersionedBatch`](synthetic-pipeline.md#opt-in-versioned-standalone-pipeline)
+orchestrator composes the existing normalizer and classifier with deterministic
+category tags, v2 policy, and this adapter. It accepts a pinned account
+configuration revision (or built-in defaults), and submits the completed
+batch through one persistence transaction. The existing v1 pipeline remains
+the default; no n8n workflow calls this M1 entry point.
+
 Tag corrections use append-only `add`/`remove` events tied to an account,
 message, base evaluation, and tag defined in that evaluation's configuration
 snapshot. A caller-supplied correction UUID makes retries idempotent. Effective

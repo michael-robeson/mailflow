@@ -3,6 +3,9 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
+  BUILT_IN_TAG_DEFINITIONS,
+  assignBuiltInTags,
+  tagDefinitionsForConfiguration,
   validateTagAssignment,
   validateTagDefinition,
   validateTaggingResult,
@@ -39,6 +42,52 @@ function assignment(tagId, provenance) {
 test('validates built-in and account-owned tag definitions', () => {
   assert.deepEqual(validateTagDefinition(builtInTag()), builtInTag());
   assert.deepEqual(validateTagDefinition(userTag()), userTag());
+});
+
+test('assigns deterministic category tags with existing classifier-rule provenance', () => {
+  const classification = {
+    schemaVersion: '1.0',
+    category: 'interview_request',
+    status: 'matched',
+    matchedRuleIds: ['interview_invitation', 'recruiter_direct_outreach'],
+  };
+  const assignments = assignBuiltInTags(classification);
+
+  assert.deepEqual(assignments, {
+    schemaVersion: '1.0',
+    assignments: [
+      {
+        schemaVersion: '1.0',
+        tagId: 'interview_request',
+        provenance: { type: 'built_in_rule', ruleId: 'interview_invitation' },
+      },
+    ],
+  });
+  assert.equal(BUILT_IN_TAG_DEFINITIONS.length, 7);
+  assert.deepEqual(
+    validateTaggingResult(assignments, {
+      accountKey,
+      definitions: tagDefinitionsForConfiguration({ tagDefinitions: [userTag()] }),
+    }),
+    assignments,
+  );
+  assert.deepEqual(
+    assignBuiltInTags({
+      schemaVersion: '1.0',
+      category: 'other',
+      status: 'insufficient_evidence',
+      matchedRuleIds: [],
+    }),
+    { schemaVersion: '1.0', assignments: [] },
+  );
+  assert.throws(
+    () =>
+      assignBuiltInTags({
+        ...classification,
+        matchedRuleIds: ['recruiter_direct_outreach'],
+      }),
+    TypeError,
+  );
 });
 
 test('rejects invalid tag definition schemas, ownership, provenance, and fields', () => {

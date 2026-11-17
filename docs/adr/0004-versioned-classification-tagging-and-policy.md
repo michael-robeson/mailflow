@@ -52,8 +52,8 @@ reclassification are deferred.
 ### Versioned contracts
 
 Existing classification schema 1.0 and policy schema 1.0 remain unchanged.
-The M1 contracts below are additive; their exact schema versions and field
-names are subject to review before implementation.
+The M1 contracts below are additive and use the schema versions and field
+names shown here.
 
 #### Tag definitions and assignments
 
@@ -62,6 +62,14 @@ owner. Owners are either Mailflow (`system`) or an account identified by the
 existing opaque `accountKey`; an email address is never an owner identifier.
 The definition provenance is `built_in` or `user_defined`. Account-defined
 tags belong to that account and do not implicitly become global tags.
+
+The initial deterministic built-in tags mirror the seven positively matched
+classification category IDs, using the existing category as the `tagId` and
+the corresponding classifier rule ID as assignment provenance. The
+`other`/insufficient-evidence result receives no built-in tag. Built-in tag
+definitions are part of the application defaults version; account-defined
+tags remain in account configuration revisions and may not reuse a built-in
+`tagId`.
 
 An evaluation's tag assignment is descriptive and carries provenance:
 
@@ -237,7 +245,7 @@ The versioned evaluation envelope is:
     "status": "decided"
   },
   "configuration": {
-    "builtInDefaultsVersion": "mailflow-m1.1",
+    "builtInDefaultsVersion": "mailflow-m1.2",
     "accountRevisionId": 42,
     "accountRevisionVersion": 3,
     "accountRevisionDigest": "sha256:..."

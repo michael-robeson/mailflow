@@ -17,7 +17,10 @@ The standalone [normalizer](gmail-normalization.md),
 [classifier](email-classification.md), and
 [notification action policy](notification-policy.md) run offline. An inactive
 [synthetic pipeline](synthetic-pipeline.md) demonstrates their composition in
-n8n; it is not connected to Gmail and does not deliver notifications.
+n8n; it is not connected to Gmail and does not deliver notifications. An
+additive opt-in standalone M1 pipeline composes normalization, classification,
+category tags, v2 policy, and the versioned persistence adapter; the existing
+v1 pipeline remains the default and no n8n workflow uses the M1 path.
 An inactive [live Gmail candidate](live-gmail-processing.md) connects the
 same pipeline to bounded read-only Gmail requests and has been run twice
 against live Gmail with separate approval. The repository export is unbound.

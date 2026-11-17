@@ -9,6 +9,7 @@ const {
   resolveEffectiveConfiguration,
 } = require('../../lib/effective-configuration.cjs');
 const { createVersionedPersistenceAdapter } = require('../../lib/versioned-persistence.cjs');
+const { processVersionedBatch } = require('../../lib/versioned-pipeline.cjs');
 
 const pool = new Pool({
   host: '127.0.0.1',
@@ -30,6 +31,8 @@ const invalidLegacyRun = '50000000-0000-4000-8000-000000000008';
 const rollbackRun = '50000000-0000-4000-8000-000000000009';
 const legacyCurrentConflictRun = '50000000-0000-4000-8000-000000000011';
 const unpersistedRevisionRun = '50000000-0000-4000-8000-000000000012';
+const versionedPipelineRun = '50000000-0000-4000-8000-000000000013';
+const versionedReplayRun = '50000000-0000-4000-8000-000000000014';
 
 const followUpDefinition = {
   schemaVersion: '1.0',
@@ -51,6 +54,21 @@ const configurationSnapshot = {
   },
   tagDefinitions: [followUpDefinition, archiveDefinition],
 };
+
+function gmailMessage(id, body) {
+  return {
+    id,
+    internalDate: '1794934800000',
+    payload: {
+      mimeType: 'text/plain',
+      headers: [
+        { name: 'From', value: 'Recruiter <recruiter@example.test>' },
+        { name: 'Subject', value: '' },
+      ],
+      body: { data: Buffer.from(body, 'utf8').toString('base64url') },
+    },
+  };
+}
 
 function evaluationBatch(runId, revision, overrides = {}) {
   return {
@@ -251,6 +269,100 @@ test('isolated PostgreSQL persists immutable M1 history, corrections, current se
   assert.equal(current.evaluation.evaluationId, secondEvaluationId);
   assert.deepEqual(current.evaluation.tagging.assignments, []);
 
+  const pipelineRequest = {
+    runId: versionedPipelineRun,
+    accountKey,
+    configurationRevision: created.revision,
+    isHistoricalReplay: false,
+    items: [
+      {
+        message: gmailMessage('synthetic_pipeline_interview', 'We would like to interview you'),
+        makeCurrent: true,
+      },
+    ],
+    persistenceAdapter: adapter,
+  };
+  const pipelineResult = await processVersionedBatch(pipelineRequest);
+  const pipelineRetry = await processVersionedBatch(pipelineRequest);
+  const pipelineEvaluationId = pipelineResult.results[0].evaluationId;
+  assert.equal(pipelineResult.results[0].classification.category, 'interview_request');
+  assert.deepEqual(pipelineResult.results[0].tagging.assignments, [
+    {
+      schemaVersion: '1.0',
+      tagId: 'interview_request',
+      provenance: { type: 'built_in_rule', ruleId: 'interview_invitation' },
+    },
+  ]);
+  assert.equal(pipelineResult.results[0].policy.priority, 'high');
+  assert.equal(pipelineResult.persistence.alreadyProcessed, false);
+  assert.equal(pipelineRetry.persistence.alreadyProcessed, true);
+  assert.equal(pipelineRetry.results[0].evaluationId, pipelineEvaluationId);
+  const pipelineCurrent = await adapter.getCurrentEffectiveEvaluation({
+    accountKey,
+    messageId: 'synthetic_pipeline_interview',
+  });
+  assert.equal(pipelineCurrent.evaluation.evaluationId, pipelineEvaluationId);
+
+  const removeBuiltInTag = {
+    schemaVersion: '1.0',
+    correctionId: '50000000-0000-4000-8000-000000000016',
+    accountKey,
+    messageId: 'synthetic_pipeline_interview',
+    baseEvaluationId: pipelineEvaluationId,
+    target: { type: 'tag', operation: 'remove', tagId: 'interview_request' },
+    source: 'user',
+  };
+  const addUserTag = {
+    ...removeBuiltInTag,
+    correctionId: '50000000-0000-4000-8000-000000000017',
+    target: { type: 'tag', operation: 'add', tagId: 'follow_up' },
+  };
+  await adapter.persistTagCorrection(removeBuiltInTag);
+  await adapter.persistTagCorrection(addUserTag);
+  const correctedPipelineCurrent = await adapter.getCurrentEffectiveEvaluation({
+    accountKey,
+    messageId: 'synthetic_pipeline_interview',
+  });
+  assert.deepEqual(correctedPipelineCurrent.evaluation.tagging.assignments, [
+    {
+      schemaVersion: '1.0',
+      tagId: 'follow_up',
+      provenance: { type: 'user_correction', correctionId: addUserTag.correctionId },
+    },
+  ]);
+
+  const pipelineReplayResult = await processVersionedBatch({
+    ...pipelineRequest,
+    runId: versionedReplayRun,
+    isHistoricalReplay: true,
+    items: [
+      {
+        message: gmailMessage('synthetic_pipeline_interview', 'Your application was unsuccessful'),
+        makeCurrent: false,
+      },
+    ],
+  });
+  assert.notEqual(pipelineReplayResult.results[0].evaluationId, pipelineEvaluationId);
+  current = await adapter.getCurrentEffectiveEvaluation({
+    accountKey,
+    messageId: 'synthetic_pipeline_interview',
+  });
+  assert.equal(current.evaluation.evaluationId, pipelineEvaluationId);
+  assert.deepEqual(
+    current.evaluation.tagging.assignments,
+    correctedPipelineCurrent.evaluation.tagging.assignments,
+  );
+  await adapter.selectCurrentEffectiveEvaluation({
+    accountKey,
+    messageId: 'synthetic_pipeline_interview',
+    evaluationId: pipelineReplayResult.results[0].evaluationId,
+  });
+  current = await adapter.getCurrentEffectiveEvaluation({
+    accountKey,
+    messageId: 'synthetic_pipeline_interview',
+  });
+  assert.equal(current.evaluation.evaluationId, pipelineReplayResult.results[0].evaluationId);
+
   await legacyAdapter.persistBatch(
     legacyBatch(
       legacyCurrentConflictRun,
@@ -332,23 +444,20 @@ test('isolated PostgreSQL persists immutable M1 history, corrections, current se
     },
   };
   const failingAdapter = createVersionedPersistenceAdapter(rollbackPool);
-  const rollbackBatch = evaluationBatch(rollbackRun, created.revision, {
-    gmailMessageId: 'synthetic_m1_rollback',
-    effectiveTags: {
-      schemaVersion: '1.0',
-      assignments: [
-        {
-          schemaVersion: '1.0',
-          tagId: 'follow_up',
-          provenance: { type: 'user_correction', correctionId: correction1 },
-        },
-      ],
-    },
-  });
-  await assert.rejects(
-    failingAdapter.persistEvaluationBatch(rollbackBatch),
-    /synthetic M1 assignment failure/,
-  );
+  const rollbackRequest = {
+    runId: rollbackRun,
+    accountKey,
+    configurationRevision: created.revision,
+    isHistoricalReplay: false,
+    items: [
+      {
+        message: gmailMessage('synthetic_m1_rollback', 'We would like to interview you'),
+        makeCurrent: true,
+      },
+    ],
+    persistenceAdapter: failingAdapter,
+  };
+  await assert.rejects(processVersionedBatch(rollbackRequest), /synthetic M1 assignment failure/);
   const rolledBack = await pool.query(
     `SELECT
       (SELECT count(*)::int FROM mailflow.versioned_evaluation_batches WHERE id = $1) AS batches,
@@ -363,6 +472,16 @@ test('isolated PostgreSQL persists immutable M1 history, corrections, current se
     messages: 0,
     current_rows: 0,
   });
+  const rollbackRetry = await processVersionedBatch({
+    ...rollbackRequest,
+    persistenceAdapter: adapter,
+  });
+  assert.equal(rollbackRetry.persistence.alreadyProcessed, false);
+  const rollbackCurrent = await adapter.getCurrentEffectiveEvaluation({
+    accountKey,
+    messageId: 'synthetic_m1_rollback',
+  });
+  assert.equal(rollbackCurrent.evaluation.evaluationId, rollbackRetry.results[0].evaluationId);
 
   const immutable = await pool.query(
     `SELECT
@@ -374,9 +493,9 @@ test('isolated PostgreSQL persists immutable M1 history, corrections, current se
   );
   assert.deepEqual(immutable.rows[0], {
     revisions: 2,
-    evaluations: 2,
-    assignments: 0,
-    corrections: 2,
+    evaluations: 5,
+    assignments: 3,
+    corrections: 4,
   });
   await assert.rejects(
     pool.query('UPDATE mailflow.account_configuration_revisions SET version = 99'),

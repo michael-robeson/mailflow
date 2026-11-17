@@ -154,6 +154,21 @@ test('rejects malformed, cross-account, or tampered configuration revisions', ()
       ...valid,
       snapshot: snapshot({ job_alert: { notificationCadence: null } }),
     },
+    {
+      ...valid,
+      snapshot: {
+        ...snapshot(),
+        tagDefinitions: [
+          {
+            schemaVersion: '1.0',
+            tagId: 'interview_request',
+            name: 'Custom interview request',
+            owner: { type: 'account', accountKey },
+            provenance: 'user_defined',
+          },
+        ],
+      },
+    },
   ]) {
     assert.throws(() => validateConfigurationRevision(invalid), TypeError);
   }

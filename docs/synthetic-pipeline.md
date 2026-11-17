@@ -91,3 +91,31 @@ Run the end-to-end offline simulation with:
 ```sh
 node --test tests/mailflow-synthetic-pipeline.test.cjs
 ```
+
+## Opt-in versioned standalone pipeline
+
+`lib/versioned-pipeline.cjs` exports `processVersionedBatch` as a separate
+M1 entry point. It requires an account key, an explicit persisted configuration
+revision (or `null` for built-in defaults), a run UUID, a replay flag, an
+explicit `makeCurrent` choice for each message, and an injected
+`createVersionedPersistenceAdapter` instance. It normalizes and classifies
+each message, assigns a system tag for the matching existing classification
+category, evaluates the v2 category policy, then persists the complete batch
+through one transactional adapter call. Account-defined tags can be added or
+removed only through the existing explicit correction API.
+
+The seven matched categories use their existing category IDs as built-in
+tag IDs and the corresponding classifier rule IDs as provenance;
+insufficient-evidence messages receive no built-in tag. Account-defined tags
+cannot reuse those built-in IDs. Tags do not affect policy selection.
+Historical batches must explicitly set every `makeCurrent`
+to `false`; selecting a historical evaluation later requires the separate
+explicit current-selection API. Retrying an identical batch with the same run
+UUID returns the original evaluation IDs. A failed transactional write leaves
+no batch, evaluation, tag assignment, or current-effective update.
+
+This API is additive and is not called by `processSyntheticBatch` or any
+checked-in n8n workflow. It does not send notifications, schedule delivery, or
+modify Gmail. Its synthetic tests use an injected offline persistence stub;
+transactional guarantees are covered separately by the disposable PostgreSQL
+integration tests.
