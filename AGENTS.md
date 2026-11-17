@@ -82,6 +82,12 @@ Follow those documents for detailed procedures; do not duplicate them here.
   Keep workflow exports, reusable code, and migrations in their established
   locations. Do not add frameworks or abstractions without a demonstrated
   need.
+- Treat repository documentation as authoritative; read the relevant canonical
+  guidance instead of relying on conversation or session history.
+- During an approved task, autonomously correct routine, low-risk issues
+  introduced by the work when they remain in scope, then rerun the affected
+  checks. Escalate substantive architectural questions, scope changes,
+  security concerns, destructive operations, and unresolved failures.
 - For behavior changes, add or update focused synthetic tests that exercise
   the requested behavior. Use existing helpers and test patterns.
 - From the repository root, the documented offline checks are:
@@ -104,3 +110,6 @@ Follow those documents for detailed procedures; do not duplicate them here.
 - Report the exact checks performed and distinguish verified behavior from
   behavior not exercised. Do not claim static validation proves workflow
   runtime behavior or live-provider behavior.
+- Keep implementation sessions focused on the approved task and provide a
+  concise completion report with changes, verification results, and any
+  unresolved issues.

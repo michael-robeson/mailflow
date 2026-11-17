@@ -21,7 +21,11 @@ starting.
    actual n8n execution from JavaScript simulation.
 4. Verify each acceptance check with observable evidence. If a required setup
    is unavailable or a check fails, report the specific blocker or failure
-   and what remains unverified. Do not present partial coverage as a pass.
+   and what remains unverified. For routine, low-risk failures introduced by
+   the approved change, correct them within scope and rerun affected checks.
+   Escalate substantive architectural questions, scope changes, security
+   concerns, destructive operations, and unresolved failures. Do not present
+   partial coverage as a pass.
 5. Keep changes scoped to verification. Preserve pre-existing worktree
    changes, do not commit or push, and obtain approval before destructive
    cleanup. If any files change, provide a complete review patch that includes
