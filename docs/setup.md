@@ -30,10 +30,15 @@ npm run verify
 
 The root manifest contains no application runtime dependencies. Verification
 checks formatting, runs ESLint and the repository validator, and runs
-synthetic tests; ESLint complexity warnings are informational and use its
-default threshold. Run `npm run format:check` or `npm run lint` for either
-non-mutating static check alone. `npm run format` and `npm run lint:fix`
-modify maintained CommonJS source, tests, and scripts.
+synthetic tests with Node's built-in coverage report. Coverage includes only
+maintained application modules under `lib/`; tests, scripts, runtime fixtures,
+generated artifacts, and n8n workflow exports are excluded. The report shows
+line, branch, and function coverage by module. Percentages are informational
+and have no thresholds. Run `npm run coverage` to run ESLint and the same
+instrumented synthetic tests, displaying existing informational complexity
+warnings alongside the coverage report. Run `npm run format:check` or
+`npm run lint` for either non-mutating static check alone. `npm run format`
+and `npm run lint:fix` modify maintained CommonJS source, tests, and scripts.
 
 The validator scans tracked and non-ignored untracked files, checks workflow
 JSON for syntax and duplicate decoded object keys, and checks workflow safety.

@@ -6,7 +6,9 @@
     "format": "prettier --write \"lib/**/*.cjs\" \"scripts/**/*.cjs\" \"tests/**/*.cjs\"",
     "lint": "eslint \"lib/**/*.cjs\" \"scripts/**/*.cjs\" \"tests/**/*.cjs\"",
     "lint:fix": "eslint --fix \"lib/**/*.cjs\" \"scripts/**/*.cjs\" \"tests/**/*.cjs\"",
-    "verify": "npm run format:check && npm run lint && node scripts/validate.cjs && node --test tests/*.test.cjs",
+    "coverage": "npm run lint && npm run test:coverage",
+    "test:coverage": "node --test --experimental-test-coverage --test-coverage-include='lib/**/*.cjs' tests/*.test.cjs",
+    "verify": "npm run format:check && npm run lint && node scripts/validate.cjs && npm run test:coverage",
     "verify:postgres": "sh scripts/test-persistence-postgres.sh"
   },
   "devDependencies": {

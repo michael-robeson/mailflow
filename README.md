@@ -96,8 +96,13 @@ The workflow must be imported and its credential bound locally.
 ## Quality gates
 
 Run `npm ci` to install the pinned development tools, then `npm run verify` for
-format verification, ESLint, repository validation, and synthetic tests.
-Complexity warnings are informational and use ESLint's default threshold.
+format verification, ESLint, repository validation, and synthetic tests with
+Node's built-in coverage report. Coverage is limited to maintained modules
+under `lib/`, reported by module for lines, branches, and functions; it has no
+thresholds and does not count tests, fixtures, generated artifacts, or
+workflow exports. Run `npm run coverage` to display coverage and the existing
+informational ESLint complexity warnings without format or repository
+validation. Complexity warnings use ESLint's default threshold.
 `npm run format:check` and `npm run lint` run the non-mutating checks
 individually; `npm run format` and `npm run lint:fix` apply fixes to maintained
 CommonJS code. The root manifest introduces no application runtime
