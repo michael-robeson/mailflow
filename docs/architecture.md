@@ -17,13 +17,19 @@ The standalone [normalizer](gmail-normalization.md),
 [classifier](email-classification.md), and
 [notification action policy](notification-policy.md) run offline. An inactive
 [synthetic pipeline](synthetic-pipeline.md) demonstrates their composition in
-n8n; it is not connected to Gmail and does not deliver notifications.
+n8n; it is not connected to Gmail and does not deliver notifications. An
+additive opt-in standalone M1 pipeline composes normalization, classification,
+category tags, v2 policy, and the versioned persistence adapter; the existing
+v1 pipeline remains the default and no n8n workflow uses the M1 path.
 An inactive [live Gmail candidate](live-gmail-processing.md) connects the
 same pipeline to bounded read-only Gmail requests and has been run twice
 against live Gmail with separate approval. The repository export is unbound.
 The [persistence foundation](postgres-persistence.md) includes a separate
 local application database, migrated and verified with synthetic data, and an
-independent transactional adapter.
+independent transactional adapter. The M1 versioned persistence adapter and
+migration are additionally verified only in a disposable isolated PostgreSQL
+test; they have not been applied to a normal runtime database or integrated
+into a workflow.
 A separate inactive [Gmail persistence candidate](live-persistence.md) has
 been verified in the n8n runner with synthetic data and a separately approved
 live run. Further live runs require separate approval.
@@ -81,7 +87,9 @@ flowchart LR
 
 The JSON files in [config](../config/) are empty placeholders, not loaded
 classification rules. Application migration 1 was applied only to the
-separate local application database, never to n8n's database.
+separate local application database, never to n8n's database. Migration 3
+adds versioned M1 persistence structures and has been verified in an isolated
+disposable test database only.
 
 ## Data flows
 

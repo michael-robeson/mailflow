@@ -21,7 +21,12 @@ function replaceExactlyOnce(source, before, after, label) {
   return source.slice(0, first) + after + source.slice(first + before.length);
 }
 
-function configureWorkflows({ ingestionId, accountKey }) {
+function configureWorkflows({
+  ingestionId,
+  accountKey,
+  enableM1 = false,
+  configurationRevisionId = null,
+}) {
   if (
     typeof ingestionId !== 'string' ||
     !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(ingestionId)
@@ -30,6 +35,16 @@ function configureWorkflows({ ingestionId, accountKey }) {
   }
   if (typeof accountKey !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(accountKey)) {
     throw new Error('Invalid synthetic account key');
+  }
+  if (typeof enableM1 !== 'boolean') throw new Error('Invalid synthetic M1 flag');
+  if (
+    configurationRevisionId !== null &&
+    (!Number.isSafeInteger(configurationRevisionId) || configurationRevisionId < 1)
+  ) {
+    throw new Error('Invalid synthetic configuration revision ID');
+  }
+  if (!enableM1 && configurationRevisionId !== null) {
+    throw new Error('A configuration revision requires explicit M1 enablement');
   }
   const parent = JSON.parse(
     fs.readFileSync(path.join(ROOT, 'workflows/09-mailflow-historical-multi-page.json'), 'utf8'),
@@ -111,6 +126,18 @@ function configureWorkflows({ ingestionId, accountKey }) {
     'const maxMessages = 10;',
     'message maximum',
   );
+  code = replaceExactlyOnce(
+    code,
+    'const enableM1 = false;',
+    `const enableM1 = ${enableM1};`,
+    'M1 opt-in',
+  );
+  code = replaceExactlyOnce(
+    code,
+    'const configurationRevisionId = null;',
+    `const configurationRevisionId = ${configurationRevisionId ?? 'null'};`,
+    'configuration revision',
+  );
   configureNode.parameters.jsCode = code;
 
   parent.name = '09 - Mailflow Historical Multi-Page (SYNTHETIC TEST COPY)';
@@ -136,6 +163,10 @@ DECLARE
   message_count integer;
   classification_count integer;
   decision_count integer;
+  versioned_evaluation_count integer;
+  historical_evaluation_count integer;
+  current_effective_count integer;
+  tag_assignment_count integer;
 BEGIN
   SELECT count(*)::int, min(page_number), max(page_number)
     INTO checkpoint_count, first_page, last_page
@@ -155,6 +186,14 @@ BEGIN
     FROM mailflow.policy_decisions p
     JOIN mailflow.classifications c ON c.id = p.classification_id
     WHERE c.account_key = ${account};
+  SELECT count(*)::int,
+         count(*) FILTER (WHERE is_historical_replay)::int
+    INTO versioned_evaluation_count, historical_evaluation_count
+    FROM mailflow.evaluations WHERE account_key = ${account};
+  SELECT count(*)::int INTO current_effective_count
+    FROM mailflow.current_effective_evaluations WHERE account_key = ${account};
+  SELECT count(*)::int INTO tag_assignment_count
+    FROM mailflow.evaluation_tag_assignments WHERE account_key = ${account};
 
   IF checkpoint_count <> 3 OR first_page <> 1 OR last_page <> 3
     OR final_state->>'pages' <> '3'
@@ -164,7 +203,29 @@ BEGIN
     OR final_state->'hasMore' <> 'false'::jsonb
     OR final_state->'nextPageToken' <> 'null'::jsonb
     OR run_count <> 5 OR message_count <> 5
-    OR classification_count <> 5 OR decision_count <> 5 THEN
+    OR classification_count <> 5 OR decision_count <> 5
+    OR versioned_evaluation_count <> 5 OR historical_evaluation_count <> 5
+    OR current_effective_count <> 0 OR tag_assignment_count <> 5
+    OR EXISTS (
+      SELECT 1 FROM mailflow.evaluations
+      WHERE account_key = ${account}
+        AND (classification->>'category' <> 'job_alert'
+          OR policy->>'action' <> 'weekly')
+    )
+    OR EXISTS (
+      SELECT 1
+      FROM mailflow.evaluations e
+      LEFT JOIN mailflow.evaluation_tag_assignments t
+        ON t.evaluation_id = e.id
+        AND t.account_key = e.account_key
+        AND t.message_id = e.message_id
+      WHERE e.account_key = ${account}
+        AND (
+          t.evaluation_id IS NULL
+          OR t.tag_id <> (e.classification->>'category')
+          OR t.provenance_type <> 'built_in_rule'
+        )
+    ) THEN
     RAISE EXCEPTION 'Workflow 09 synthetic success acceptance failed';
   END IF;
   RAISE NOTICE 'Workflow 09 synthetic success acceptance passed';
@@ -259,7 +320,11 @@ function prepareRuntime() {
       0o644,
     );
 
-    for (const filename of ['001_persistence_foundation.sql', '002_historical_ingestion.sql']) {
+    for (const filename of [
+      '001_persistence_foundation.sql',
+      '002_historical_ingestion.sql',
+      '003_versioned_evaluation_persistence.sql',
+    ]) {
       fs.copyFileSync(
         path.join(ROOT, 'migrations', filename),
         path.join(runtimeDir, 'migrations', filename),
@@ -270,7 +335,11 @@ function prepareRuntime() {
       path.join(runtimeDir, 'gmail-fixture.cjs'),
     );
 
-    const { parent, child } = configureWorkflows({ ingestionId, accountKey });
+    const { parent, child } = configureWorkflows({
+      ingestionId,
+      accountKey,
+      enableM1: true,
+    });
     writeFile(
       path.join(runtimeDir, 'workflows/parent.json'),
       `${JSON.stringify(parent, null, 2)}\n`,
@@ -293,6 +362,8 @@ function prepareRuntime() {
           accountKey,
           pageSize: 2,
           maxMessages: 10,
+          enableM1: true,
+          configurationRevisionId: null,
         },
         null,
         2,

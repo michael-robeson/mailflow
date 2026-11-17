@@ -27,6 +27,8 @@ docker exec -i "$db_id" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres < "$r
 docker exec -i "$db_id" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres < "$root/migrations/001_persistence_foundation.sql"
 docker exec -i "$db_id" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres < "$root/migrations/002_historical_ingestion.sql"
 docker exec -i "$db_id" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres < "$root/migrations/002_historical_ingestion.sql"
+docker exec -i "$db_id" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres < "$root/migrations/003_versioned_evaluation_persistence.sql"
+docker exec -i "$db_id" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres < "$root/migrations/003_versioned_evaluation_persistence.sql"
 docker exec -i "$db_id" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres <<'SQL'
 CREATE ROLE mailflow_test_app LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION;
 GRANT CONNECT ON DATABASE postgres TO mailflow_test_app;
@@ -35,6 +37,10 @@ GRANT SELECT ON mailflow.schema_migrations TO mailflow_test_app;
 GRANT SELECT, INSERT ON mailflow.messages, mailflow.classifications, mailflow.policy_decisions,
   mailflow.workflow_runs, mailflow.action_log, mailflow.historical_ingestions,
   mailflow.historical_checkpoints TO mailflow_test_app;
+GRANT SELECT, INSERT ON mailflow.account_configuration_revisions,
+  mailflow.versioned_evaluation_batches, mailflow.evaluations,
+  mailflow.evaluation_tag_assignments, mailflow.tag_corrections TO mailflow_test_app;
+GRANT SELECT, INSERT, UPDATE ON mailflow.current_effective_evaluations TO mailflow_test_app;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA mailflow TO mailflow_test_app;
 SQL
 
@@ -47,10 +53,13 @@ done
 docker cp "$root/tests/integration/persistence-postgres.cjs" "$client_id:/tmp/mailflow-test/tests/integration/persistence-postgres.cjs"
 docker cp "$root/tests/integration/live-persistence-postgres.cjs" "$client_id:/tmp/mailflow-test/tests/integration/live-persistence-postgres.cjs"
 docker cp "$root/tests/integration/historical-ingestion-postgres.cjs" "$client_id:/tmp/mailflow-test/tests/integration/historical-ingestion-postgres.cjs"
+docker cp "$root/tests/integration/versioned-persistence-postgres.cjs" "$client_id:/tmp/mailflow-test/tests/integration/versioned-persistence-postgres.cjs"
 docker exec -e NODE_PATH=/usr/local/lib/node_modules/n8n/node_modules "$client_id" \
   node --test /tmp/mailflow-test/tests/integration/persistence-postgres.cjs
 docker exec -e NODE_PATH=/usr/local/lib/node_modules/n8n/node_modules "$client_id" \
   node --test /tmp/mailflow-test/tests/integration/live-persistence-postgres.cjs
 docker exec -e NODE_PATH=/usr/local/lib/node_modules/n8n/node_modules "$client_id" \
   node --test /tmp/mailflow-test/tests/integration/historical-ingestion-postgres.cjs
+docker exec -e NODE_PATH=/usr/local/lib/node_modules/n8n/node_modules "$client_id" \
+  node --test /tmp/mailflow-test/tests/integration/versioned-persistence-postgres.cjs
 docker exec -i "$db_id" psql -X -v ON_ERROR_STOP=1 -U mailflow_test_app -d postgres < "$root/sql/persistence-reports.sql"

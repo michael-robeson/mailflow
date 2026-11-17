@@ -23,3 +23,4 @@ the full design documentation.
 - [0001 — n8n workflow orchestration](0001-n8n-workflow-orchestration.md)
 - [0002 — Application database isolation](0002-application-database-isolation.md)
 - [0003 — Processing, classification, and policy boundaries](0003-processing-and-policy-boundaries.md)
+- [0004 — Versioned classification, tagging, policy, and evaluation history](0004-versioned-classification-tagging-and-policy.md)

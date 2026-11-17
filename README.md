@@ -46,6 +46,10 @@ has had two separately approved read-only runs of 25 messages; further live
 runs require separate approval.
 A [PostgreSQL persistence foundation](docs/postgres-persistence.md) provides
 a standalone adapter and an opt-in separate local database.
+A separate versioned persistence adapter now supports the approved M1
+configuration, evaluation, tag-correction, and current-effective contracts;
+it has only been exercised against a disposable isolated PostgreSQL database.
+Workflow integration and application-database deployment remain pending review.
 A separate inactive [Gmail persistence candidate](docs/live-persistence.md)
 has been verified with synthetic data and a separately approved live run;
 further live use needs approval.
@@ -62,7 +66,7 @@ The following are **planned, not implemented**:
 - Configurable classification rules, labels, and organization.
 - Human-approved bulk cleanup and incremental handling of new messages.
 - Daily summaries, weekly recommendations, and feedback-driven preferences.
-- Optional AI-assisted classification, audit records, and recovery mechanisms.
+- Optional AI-assisted classification, action-outcome audit, and recovery mechanisms.
 
 There are no automatically triggered classification or live-mail persistence workflows.
 See the [architecture](docs/architecture.md) for what exists and what is
@@ -124,6 +128,7 @@ for branch creation, PR review and merge, and safe post-merge cleanup.
 | Phase 1F-A: synthetic pipeline integration | Implemented | Inactive test workflow verified with synthetic data in n8n; module loading requires explicit local configuration. |
 | Phase 1F-B: controlled live Gmail processing | In progress | Inactive read-only workflow tested twice against 25-message samples; further live runs require separate approval. |
 | Phase 1F-C: persistence foundation | In progress | Separate local database and adapter verified with synthetic data. |
+| Mailflow M1 increments 1–3 | Implemented offline | Versioned tagging, configuration, policy, and persistence contracts with isolated PostgreSQL verification; workflow integration awaits review. |
 | Phase 1F-D: live Gmail persistence | In progress | Inactive integration candidate verified with synthetic data and a separately approved live run. |
 | Phase 1G-A: bounded historical ingestion | In progress | Synthetic runtime and a separately approved bounded live run verified; further live use requires approval. |
 | Later: inventory and classification | Planned | Full inventory, persistence, configurable rules, and incremental processing. |

@@ -38,6 +38,19 @@ long-running JavaScript Task Runner may cache an older package after staging
 changes, so verify its loaded exports before use. No staging, credential
 binding or live execution is authorized by the reusable exports.
 
+The parent also has an explicit `enableM1` switch, defaulting to `false`, and
+an optional `configurationRevisionId`, defaulting to `null` (built-in
+defaults). Enable M1 only after applying migration 003 and its restricted
+runtime grants. The selected revision is account-scoped and bound into the
+ingestion configuration; resuming with a different value is rejected. M1
+evaluations are additive to the unchanged v1 historical path and are written
+as historical replays with current-effective selection disabled. Each message
+uses a deterministic M1 run ID, so a retry after an uncertain M1 commit
+recognizes that evaluation rather than creating duplicate history. M1 writes
+complete before the existing v1 page persistence and checkpoint; if M1 fails,
+the page is not checkpointed. Neither configuration changes nor tag
+corrections trigger reevaluation, notification, or Gmail mutation.
+
 ## Recovery and reporting
 
 The child persists each successful message transaction separately and then
