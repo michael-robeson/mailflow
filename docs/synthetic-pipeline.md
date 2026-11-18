@@ -6,6 +6,10 @@ messages and sends them through the shared normalizer, classifier, and
 notification policy using `lib/pipeline-adapter.cjs`. It contains no Gmail,
 HTTP, scheduling, persistence, or notification-delivery nodes.
 
+The separate [provider-neutral synthetic pilot](provider-neutral-synthetic-pilot.md)
+starts with already-normalized synthetic messages and exercises the same
+classifier and policy without a Gmail-shaped payload.
+
 The adapter calls the Phase 1E modules directly. It keeps message association
 inside each per-message call and exposes only a one-based `messageNumber` in
 the report. Each report result contains the category, recommended action,

@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
-const { processSyntheticBatch } = require('../lib/pipeline-adapter.cjs');
+const { processNormalizedBatch, processSyntheticBatch } = require('../lib/pipeline-adapter.cjs');
 const { evaluateNotificationPolicy } = require('../lib/notification-policy.cjs');
 const { workflowErrors } = require('../scripts/validate.cjs');
 
@@ -13,6 +13,19 @@ const workflow = JSON.parse(fs.readFileSync(workflowPath, 'utf8'));
 const nodes = new Map(workflow.nodes.map((node) => [node.name, node]));
 const messagesNode = nodes.get('Create Synthetic Gmail Messages');
 const pipelineNode = nodes.get('Normalize Classify and Evaluate Policy');
+
+const providerNeutralWorkflowPath = path.join(
+  __dirname,
+  '../workflows/10-mailflow-provider-neutral-synthetic-pilot.json',
+);
+const providerNeutralWorkflow = JSON.parse(fs.readFileSync(providerNeutralWorkflowPath, 'utf8'));
+const providerNeutralNodes = new Map(
+  providerNeutralWorkflow.nodes.map((node) => [node.name, node]),
+);
+const providerNeutralMessagesNode = providerNeutralNodes.get(
+  'Create Provider-Neutral Synthetic Messages',
+);
+const providerNeutralPipelineNode = providerNeutralNodes.get('Classify and Evaluate Policy');
 
 function inputContext(items) {
   return {
@@ -158,6 +171,74 @@ test('invalid batches fail closed to a structured none decision', () => {
       },
     ],
   });
+});
+
+test('provider-neutral workflow stays inactive and processes normalized synthetic messages offline', async () => {
+  assert.equal(providerNeutralWorkflow.active, false);
+  assert.match(providerNeutralWorkflow.name, /TEST ONLY - INACTIVE/);
+  assert.deepEqual(providerNeutralWorkflow.pinData, {});
+  assert.deepEqual(workflowErrors(providerNeutralWorkflow), []);
+  assert.ok(
+    providerNeutralWorkflow.nodes.every(
+      (node) => !/gmail|httpRequest|emailSend|sms|scheduleTrigger/i.test(node.type),
+    ),
+  );
+  assert.equal(providerNeutralMessagesNode.parameters.mode, 'runOnceForAllItems');
+  assert.equal(providerNeutralPipelineNode.parameters.mode, 'runOnceForAllItems');
+  assert.match(providerNeutralPipelineNode.parameters.jsCode, /processNormalizedBatch/);
+
+  const generated = await runCode(providerNeutralMessagesNode, []);
+  assert.equal(generated[0].json.source, 'provider-neutral-synthetic');
+  const report = (await runCode(providerNeutralPipelineNode, [{ json: generated[0].json }]))[0]
+    .json;
+
+  assert.deepEqual(
+    report.results.map(({ category, action }) => ({ category, action })),
+    [
+      { category: 'interview_request', action: 'immediate' },
+      { category: 'application_confirmation', action: 'daily' },
+      { category: 'job_alert', action: 'weekly' },
+    ],
+  );
+  const serialized = JSON.stringify(report);
+  for (const message of generated[0].json.messages) {
+    assert.ok(!serialized.includes(message.id));
+    assert.ok(!serialized.includes(message.subject));
+    assert.ok(!serialized.includes(message.body));
+    assert.ok(!serialized.includes(message.sender.address));
+  }
+});
+
+test('provider-neutral adapter fails closed per item and rejects invalid batches', () => {
+  const throwingMessage = new Proxy(
+    {},
+    {
+      get(target, property, receiver) {
+        if (property === 'schemaVersion') throw new Error('synthetic processing failure');
+        return Reflect.get(target, property, receiver);
+      },
+    },
+  );
+  const validMessage = {
+    schemaVersion: '1.0',
+    id: 'synthetic-provider-neutral-001',
+    sender: { name: 'Example Hiring Team', address: 'hiring@example.test' },
+    subject: 'Synthetic interview invitation',
+    body: 'We would like to schedule an interview.',
+  };
+  const report = processNormalizedBatch([throwingMessage, validMessage]);
+
+  assert.deepEqual(report.results[0], {
+    messageNumber: 1,
+    category: 'other',
+    action: 'none',
+    matchedRuleIds: [],
+    explanationCodes: ['message_processing_failed'],
+    status: 'processing_error',
+  });
+  assert.equal(report.results[1].category, 'interview_request');
+  assert.equal(report.results[1].action, 'immediate');
+  assert.deepEqual(processNormalizedBatch(null), processSyntheticBatch(null));
 });
 
 test('invalid and unsupported classification inputs always produce none decisions', () => {
