@@ -15,7 +15,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "const limit = 25;\nconst query = 'newer_than:14d';\nconst accountKey = '';\nconst runId = '';\nif (!Number.isInteger(limit) || limit < 1 || limit > 25) throw new Error('Invalid message limit');\nif (typeof query !== 'string') throw new Error('Invalid query');\nif (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(runId)) throw new Error('Configure an explicit run UUID before execution');\nif (!/^[A-Za-z0-9_-]{1,128}$/.test(accountKey)) throw new Error('Invalid account key');\nreturn [{ json: { limit, query, accountKey, runId } }];"
+        "jsCode": "const limit = 25;\nconst query = 'newer_than:14d';\nconst accountKey = '';\nconst runId = '';\nconst enableM1 = false;\nconst ingestionId = '';\nconst configurationRevisionId = null;\nif (!Number.isInteger(limit) || limit < 1 || limit > 25) throw new Error('Invalid message limit');\nif (typeof query !== 'string') throw new Error('Invalid query');\nif (enableM1) {\n  const { createHistoricalState, openHistoricalForN8n } = require('mailflow-pipeline');\n  const config = { ingestionId, accountKey, query, pageSize: limit, maxMessages: limit, enableM1, configurationRevisionId };\n  createHistoricalState(config);\n  return [{ json: { enableM1, limit, query, accountKey, state: await openHistoricalForN8n(config) } }];\n}\nif (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(runId)) throw new Error('Configure an explicit run UUID before execution');\nif (!/^[A-Za-z0-9_-]{1,128}$/.test(accountKey)) throw new Error('Invalid account key');\nreturn [{ json: { enableM1, limit, query, accountKey, runId } }];"
       },
       "id": "c49fb2a0-f696-44f4-bcb1-38da44b30002",
       "name": "Configure Persistence Run",
@@ -28,8 +28,29 @@
     },
     {
       "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ !$json.enableM1 || $json.state.hasMore }}",
+              "operation": "equal",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "c49fb2a0-f696-44f4-bcb1-38da44b30010",
+      "name": "Has Pending M1 Page",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        440,
+        180
+      ]
+    },
+    {
+      "parameters": {
         "method": "GET",
-        "url": "={{ 'https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=' + $json.limit + '&fields=messages%28id%29' + ($json.query ? '&q=' + encodeURIComponent($json.query) : '') }}",
+        "url": "={{ 'https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=' + ($json.enableM1 ? Math.min($json.state.pageSize, $json.state.maxMessages - $json.state.discovered) : $json.limit) + '&fields=' + ($json.enableM1 ? 'messages%28id%29,nextPageToken' : 'messages%28id%29') + ($json.query ? '&q=' + encodeURIComponent($json.query) : '') + ($json.enableM1 && $json.state.nextPageToken ? '&pageToken=' + encodeURIComponent($json.state.nextPageToken) : '') }}",
         "authentication": "genericCredentialType",
         "genericAuthType": "oAuth2Api",
         "options": {}
@@ -46,7 +67,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "const { prepareGmailMessageList } = require('mailflow-pipeline');\nconst limit = $('Configure Persistence Run').first().json.limit;\nconst messages = prepareGmailMessageList($input.first()?.json, limit);\nreturn messages.length ? messages.map((message) => ({ json: { hasMessage: true, ...message } })) : [{ json: { hasMessage: false } }];"
+        "jsCode": "const { prepareGmailMessageList, prepareHistoricalPage } = require('mailflow-pipeline');\nconst config = $('Configure Persistence Run').first().json;\nif (config.enableM1) {\n  const page = prepareHistoricalPage(config.state, $input.first()?.json);\n  const base = { previousState: config.state, page };\n  return page.messages.length ? page.messages.map((message) => ({ json: { hasMessage: true, ...message, ...base } })) : [{ json: { hasMessage: false, ...base } }];\n}\nconst messages = prepareGmailMessageList($input.first()?.json, config.limit);\nreturn messages.length ? messages.map((message) => ({ json: { hasMessage: true, ...message } })) : [{ json: { hasMessage: false } }];"
       },
       "id": "c49fb2a0-f696-44f4-bcb1-38da44b30004",
       "name": "Prepare Message IDs",
@@ -107,7 +128,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "const { processGmailResponse } = require('mailflow-pipeline');\nconst requests = $('Prepare Message IDs').all();\nconst responses = $input.all();\nif (responses.length !== requests.length || requests.length > 25) throw new Error('Gmail response count does not match requests');\nconst processed = new Array(requests.length);\nfor (const response of responses) {\n  const index = response.pairedItem?.item;\n  if (!Number.isInteger(index) || index < 0 || index >= requests.length || processed[index]) throw new Error('Invalid Gmail response association');\n  processed[index] = { json: processGmailResponse(requests[index].json.id, response.json, index + 1) };\n}\nreturn processed;"
+        "jsCode": "const config = $('Configure Persistence Run').first().json;\nconst requests = $('Prepare Message IDs').all();\nconst responses = $input.all();\nif (config.enableM1) {\n  if (responses.length !== requests.length || requests.length > 25) throw new Error('Gmail response count does not match requests');\n  const ordered = new Array(requests.length);\n  for (const response of responses) {\n    const index = response.pairedItem?.item;\n    if (!Number.isInteger(index) || index < 0 || index >= requests.length || ordered[index]) throw new Error('Invalid Gmail response association');\n    ordered[index] = { json: { messageId: requests[index].json.id, statusCode: response.json?.statusCode, hasError: Boolean(response.json?.error), body: response.json?.body } };\n  }\n  return ordered;\n}\nconst { processGmailResponse } = require('mailflow-pipeline');\nif (responses.length !== requests.length || requests.length > 25) throw new Error('Gmail response count does not match requests');\nconst processed = new Array(requests.length);\nfor (const response of responses) {\n  const index = response.pairedItem?.item;\n  if (!Number.isInteger(index) || index < 0 || index >= requests.length || processed[index]) throw new Error('Invalid Gmail response association');\n  processed[index] = { json: processGmailResponse(requests[index].json.id, response.json, index + 1) };\n}\nreturn processed;"
       },
       "id": "c49fb2a0-f696-44f4-bcb1-38da44b30007",
       "name": "Process Gmail Responses",
@@ -121,7 +142,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "const { persistForN8n } = require('mailflow-pipeline');\nconst { runId, accountKey } = $('Configure Persistence Run').first().json;\nreturn [{ json: await persistForN8n(runId, accountKey, $input.all().map((item) => item.json)) }];"
+        "jsCode": "const config = $('Configure Persistence Run').first().json;\nif (config.enableM1) {\n  const pageInfo = $('Prepare Message IDs').first().json;\n  const { persistVersionedLivePageForN8n } = require('mailflow-pipeline');\n  return [{ json: await persistVersionedLivePageForN8n(pageInfo.previousState, pageInfo.page, $input.all().map((item) => item.json)) }];\n}\nconst { persistForN8n } = require('mailflow-pipeline');\nreturn [{ json: await persistForN8n(config.runId, config.accountKey, $input.all().map((item) => item.json)) }];"
       },
       "id": "c49fb2a0-f696-44f4-bcb1-38da44b30008",
       "name": "Persist and Report",
@@ -135,7 +156,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "const { persistForN8n } = require('mailflow-pipeline');\nconst { runId, accountKey } = $('Configure Persistence Run').first().json;\nreturn [{ json: await persistForN8n(runId, accountKey, []) }];"
+        "jsCode": "const config = $('Configure Persistence Run').first().json;\nif (config.enableM1) {\n  const pageInfo = $('Prepare Message IDs').first().json;\n  const { persistVersionedLivePageForN8n } = require('mailflow-pipeline');\n  return [{ json: await persistVersionedLivePageForN8n(pageInfo.previousState, pageInfo.page, []) }];\n}\nconst { persistForN8n } = require('mailflow-pipeline');\nreturn [{ json: await persistForN8n(config.runId, config.accountKey, []) }];"
       },
       "id": "c49fb2a0-f696-44f4-bcb1-38da44b30009",
       "name": "Persist Empty and Report",
@@ -144,6 +165,20 @@
       "position": [
         1100,
         140
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const { historicalReport } = require('mailflow-pipeline');\nconst state = $('Configure Persistence Run').first().json.state;\nreturn [{ json: { schemaVersion: '2.0', ...historicalReport(state), configuration: { configurationRevisionId: state.versionedEvaluation.configurationRevisionId }, currentEffectiveSelected: 0, results: [] } }];"
+      },
+      "id": "c49fb2a0-f696-44f4-bcb1-38da44b30011",
+      "name": "Already Complete Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        320
       ]
     }
   ],
@@ -163,7 +198,25 @@
       "main": [
         [
           {
+            "node": "Has Pending M1 Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Pending M1 Page": {
+      "main": [
+        [
+          {
             "node": "List Gmail Messages",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Already Complete Report",
             "type": "main",
             "index": 0
           }
