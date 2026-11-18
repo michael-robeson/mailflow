@@ -41,6 +41,9 @@ classification results to recommended timing without delivering notifications.
 An inactive [synthetic n8n pipeline](docs/synthetic-pipeline.md) demonstrates
 the complete normalization-to-policy flow and has been tested with synthetic
 data in the local n8n runtime.
+A separate [provider-neutral synthetic pilot](docs/provider-neutral-synthetic-pilot.md)
+tests the shared classifier and policy after normalization, without Gmail
+payloads or provider requests.
 An inactive [controlled live Gmail workflow](docs/live-gmail-processing.md)
 has had two separately approved read-only runs of 25 messages; further live
 runs require separate approval.

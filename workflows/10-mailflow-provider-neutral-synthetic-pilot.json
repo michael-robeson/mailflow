@@ -1,0 +1,52 @@
+{
+  "name": "10 - Mailflow Provider-Neutral Synthetic Pilot (TEST ONLY - INACTIVE)",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "a35f9c84-c2bf-48c6-bc66-245cb0878b0a",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "return [{ json: { source: 'provider-neutral-synthetic', messages: [\n  {\n    schemaVersion: '1.0',\n    id: 'synthetic-provider-neutral-interview-001',\n    sender: { name: 'Example Hiring Team', address: 'hiring@example.test' },\n    subject: 'Synthetic interview invitation',\n    receivedAt: '2026-11-17T12:00:00.000Z',\n    body: 'We would like to schedule an interview.',\n    warnings: []\n  },\n  {\n    schemaVersion: '1.0',\n    id: 'synthetic-provider-neutral-confirmation-002',\n    sender: { name: 'Example Careers', address: 'careers@example.test' },\n    subject: 'Synthetic application confirmation',\n    receivedAt: '2026-11-17T12:01:00.000Z',\n    body: \"We've received your application.\",\n    warnings: []\n  },\n  {\n    schemaVersion: '1.0',\n    id: 'synthetic-provider-neutral-alert-003',\n    sender: { name: 'Example Jobs', address: 'jobs@example.test' },\n    subject: 'Synthetic job alert',\n    receivedAt: '2026-11-17T12:02:00.000Z',\n    body: 'New jobs matching your preferences.',\n    warnings: []\n  }\n] } }];"
+      },
+      "id": "1e07bdb7-8cb7-447a-aa9e-d00d5fa4d6cc",
+      "name": "Create Provider-Neutral Synthetic Messages",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [260, 0]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const { processNormalizedBatch } = require('mailflow-pipeline');\nconst input = $input.first()?.json;\nif (input?.source !== 'provider-neutral-synthetic') throw new Error('Unexpected pilot fixture source');\nreturn [{ json: processNormalizedBatch(input.messages) }];"
+      },
+      "id": "0cb5db2b-83b8-4375-b03f-2ad0d9319cb7",
+      "name": "Classify and Evaluate Policy",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [520, 0]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [[{ "node": "Create Provider-Neutral Synthetic Messages", "type": "main", "index": 0 }]]
+    },
+    "Create Provider-Neutral Synthetic Messages": {
+      "main": [[{ "node": "Classify and Evaluate Policy", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "none",
+    "saveDataSuccessExecution": "none",
+    "saveManualExecutions": false,
+    "saveExecutionProgress": false
+  },
+  "active": false,
+  "pinData": {}
+}
