@@ -10,6 +10,11 @@ const {
 } = require('../../lib/effective-configuration.cjs');
 const { createVersionedPersistenceAdapter } = require('../../lib/versioned-persistence.cjs');
 const { processVersionedBatch } = require('../../lib/versioned-pipeline.cjs');
+const {
+  openHistoricalIngestion,
+  prepareHistoricalPage,
+  persistVersionedLivePage,
+} = require('../../lib/historical-ingestion.cjs');
 
 const pool = new Pool({
   host: '127.0.0.1',
@@ -502,4 +507,128 @@ test('isolated PostgreSQL persists immutable M1 history, corrections, current se
     { code: '42501' },
   );
   await assert.rejects(pool.query('DELETE FROM mailflow.evaluations'), { code: '42501' });
+});
+
+test('M1 live pages keep failed work retryable and checkpoint only after idempotent current selection', async (t) => {
+  const livePool = new Pool({
+    host: '127.0.0.1',
+    port: 5432,
+    database: 'postgres',
+    user: 'mailflow_test_app',
+  });
+  t.after(() => livePool.end());
+  const liveAdapter = createVersionedPersistenceAdapter(livePool);
+  const liveAccountKey = 'synthetic_m1_live';
+  const liveRevision = await liveAdapter.persistConfigurationRevision({
+    requestId: '51000000-0000-4000-8000-000000000001',
+    accountKey: liveAccountKey,
+    snapshot: {
+      policyOverrides: {
+        interview_request: { priority: 'high', recommendedAction: 'review' },
+      },
+      tagDefinitions: [],
+    },
+  });
+  const config = {
+    ingestionId: '51000000-0000-4000-8000-000000000002',
+    accountKey: liveAccountKey,
+    query: 'newer_than:14d',
+    pageSize: 3,
+    maxMessages: 3,
+    enableM1: true,
+    configurationRevisionId: liveRevision.revision.revisionId,
+  };
+  const ids = [
+    'synthetic_live_success',
+    'synthetic_live_retrieval_retry',
+    'synthetic_live_processing_retry',
+  ];
+  const previous = await openHistoricalIngestion(livePool, config);
+  const page = prepareHistoricalPage(previous, {
+    messages: ids.map((id) => ({ id })),
+    nextPageToken: 'synthetic-next-page',
+  });
+  const brokenMessage = { id: ids[2] };
+  Object.defineProperty(brokenMessage, 'payload', {
+    get() {
+      throw new Error('private synthetic processing detail');
+    },
+  });
+  const failed = await persistVersionedLivePage(livePool, previous, page, [
+    {
+      messageId: ids[0],
+      statusCode: 200,
+      hasError: false,
+      body: gmailMessage(ids[0], 'We would like to interview you'),
+    },
+    {
+      messageId: ids[1],
+      statusCode: 404,
+      hasError: true,
+      body: { error: { message: 'private synthetic retrieval detail' } },
+    },
+    { messageId: ids[2], statusCode: 200, hasError: false, body: brokenMessage },
+  ]);
+  assert.equal(failed.retryCurrentPage, true);
+  assert.equal(failed.report.failed, 2);
+  assert.equal(failed.report.pages, 0);
+  assert.equal(failed.report.hasMore, true);
+  assert.equal(failed.report.stoppedAtLimit, false);
+  assert.equal(failed.report.currentEffectiveSelected, 1);
+  assert.ok(!JSON.stringify(failed.report).includes(ids[0]));
+  assert.ok(!JSON.stringify(failed.report).includes('private synthetic'));
+  assert.equal((await openHistoricalIngestion(livePool, config)).pages, 0);
+
+  const retryPage = prepareHistoricalPage(previous, {
+    messages: ids.map((id) => ({ id })),
+    nextPageToken: 'synthetic-next-page',
+  });
+  const retried = await persistVersionedLivePage(livePool, previous, retryPage, [
+    {
+      messageId: ids[0],
+      statusCode: 200,
+      hasError: false,
+      body: gmailMessage(ids[0], 'We would like to interview you'),
+    },
+    {
+      messageId: ids[1],
+      statusCode: 200,
+      hasError: false,
+      body: gmailMessage(ids[1], 'We would like to interview you'),
+    },
+    {
+      messageId: ids[2],
+      statusCode: 200,
+      hasError: false,
+      body: gmailMessage(ids[2], 'We would like to interview you'),
+    },
+  ]);
+  assert.equal(retried.retryCurrentPage, false);
+  assert.equal(retried.report.failed, 0);
+  assert.equal(retried.report.persisted, 2);
+  assert.equal(retried.report.previouslyProcessed, 1);
+  assert.equal(retried.report.currentEffectiveSelected, 3);
+  assert.equal(
+    retried.report.configuration.configurationRevision.revisionId,
+    liveRevision.revision.revisionId,
+  );
+  assert.equal((await openHistoricalIngestion(livePool, config)).pages, 1);
+  for (const id of ids) {
+    const current = await liveAdapter.getCurrentEffectiveEvaluation({
+      accountKey: liveAccountKey,
+      messageId: id,
+    });
+    assert.equal(current.source, 'current_effective');
+    assert.equal(current.evaluation.classification.category, 'interview_request');
+    assert.equal(current.evaluation.policy.priority, 'high');
+    assert.equal(current.evaluation.tagging.assignments[0].provenance.type, 'built_in_rule');
+  }
+  const counts = await livePool.query(
+    `SELECT
+      (SELECT count(*)::int FROM mailflow.historical_checkpoints WHERE ingestion_id = $1) AS checkpoints,
+      (SELECT count(*)::int FROM mailflow.versioned_evaluation_batches WHERE account_key = $2) AS batches,
+      (SELECT count(*)::int FROM mailflow.evaluations WHERE account_key = $2) AS evaluations`,
+    [config.ingestionId, liveAccountKey],
+  );
+  assert.deepEqual(counts.rows[0], { checkpoints: 1, batches: 3, evaluations: 3 });
 });

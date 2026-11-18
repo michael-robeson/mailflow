@@ -6,9 +6,39 @@ Phase 1F-B workflow and imported instance are unchanged. **Do not run it
 against Gmail without separate approval.** The default run UUID and account
 key are empty and the workflow fails before any Gmail request until both are
 configured. The export's generic query is not approval for a live run. It uses
-the same 1–25 bound, single-page GET requests, shared normalization,
-classification and policy modules, and no-save settings as Phase 1F-B.
-There are no Gmail writes, delivery nodes or automatic triggers.
+the same 1–25 bound, GET-only requests and no-save settings as Phase 1F-B.
+With `enableM1 = false` (the default), its single-page v1 persistence path and
+report remain in effect. There are no Gmail writes, delivery nodes or automatic
+triggers.
+
+## Optional M1 mode in Workflow 06
+
+The inactive export can opt into M1 by setting `enableM1 = true`, a fresh
+ingestion UUID, and the intended account key. Set `configurationRevisionId`
+to a persisted revision for that account to pin account-specific policy and
+tag configuration; `null` explicitly selects the built-in defaults. M1 is
+limited to 1–25 messages per manual execution and reuses the historical
+ingestion's configuration binding, pagination checks and append-only
+checkpoint tables. Migration 2 and versioned-evaluation migration 3 must be
+applied, any selected account revision must exist, and the updated package
+must be staged before the local n8n instance can use this path.
+
+M1 normalizes, classifies, tags and evaluates policy through the existing
+versioned pipeline, records provenance, and selects successful evaluations
+as current-effective. Each message uses a deterministic run ID scoped to the
+M1 live ingestion. A retrieval or processing failure leaves the page
+checkpoint unchanged; successful messages on that page are safe to recognize
+on retry, and the report marks the page for retry. A database error stops
+execution with a generic message because commit outcome may be unknown. Resume
+with the same ingestion UUID, account key, query, limits and pinned revision;
+do not run concurrent executions for one ingestion.
+
+The M1 report contains aggregate counts and sanitized per-message decisions,
+not message IDs, contents, raw provider errors, account keys or ingestion
+identifiers. This does not prevent transient n8n node data, logs, backups or
+editor memory from containing message contents. The export remains inactive,
+unbound and unexecuted against live Gmail; opt-in configuration does not
+authorize a live run.
 
 The processed items retain Gmail message and thread IDs internally; thread IDs
 are not stored. The persistence mapping writes message ID, optional received

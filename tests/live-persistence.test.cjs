@@ -6,6 +6,7 @@ const test = require('node:test');
 const { workflowErrors } = require('../scripts/validate.cjs');
 const { processGmailResponse } = require('../lib/gmail-live.cjs');
 const { createLivePersistenceBatch, persistLiveBatch } = require('../lib/live-persistence.cjs');
+const { createHistoricalState, prepareHistoricalPage } = require('../lib/historical-ingestion.cjs');
 
 const workflow = JSON.parse(
   fs.readFileSync('workflows/06-mailflow-gmail-persistence.json', 'utf8'),
@@ -78,8 +79,103 @@ test('persistence workflow is manual, unbound, capped, read-only and refuses an 
     "const accountKey = 'synthetic_account';",
   );
   assert.deepEqual(await new AsyncFunction(configured)(), [
-    { json: { limit: 25, query: 'newer_than:14d', accountKey: 'synthetic_account', runId } },
+    {
+      json: {
+        enableM1: false,
+        limit: 25,
+        query: 'newer_than:14d',
+        accountKey: 'synthetic_account',
+        runId,
+      },
+    },
   ]);
+});
+
+test('persistence workflow keeps M1 opt-in and carries pinned page state through paired responses', async () => {
+  const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+  const code = (name) => workflow.nodes.find((node) => node.name === name).parameters.jsCode;
+  const configureCode = code('Configure Persistence Run')
+    .replace("const accountKey = '';", "const accountKey = 'synthetic_m1_account';")
+    .replace(
+      "const ingestionId = '';",
+      "const ingestionId = 'c0000000-0000-4000-8000-000000000003';",
+    )
+    .replace('const configurationRevisionId = null;', 'const configurationRevisionId = 12;')
+    .replace('const enableM1 = false;', 'const enableM1 = true;');
+  let openedConfig;
+  const loadPackage = (name) => {
+    assert.equal(name, 'mailflow-pipeline');
+    return {
+      createHistoricalState,
+      openHistoricalForN8n: async (config) => {
+        openedConfig = config;
+        return {
+          ...createHistoricalState(config),
+          versionedEvaluation: { enabled: true, configurationRevisionId: 12 },
+        };
+      },
+    };
+  };
+  const configured = await new AsyncFunction('require', configureCode)(loadPackage);
+  assert.equal(openedConfig.enableM1, true);
+  assert.equal(openedConfig.configurationRevisionId, 12);
+  assert.equal(configured[0].json.enableM1, true);
+  assert.equal(configured[0].json.state.versionedEvaluation.configurationRevisionId, 12);
+
+  const preparedCode = code('Prepare Message IDs');
+  const prepared = await new AsyncFunction('require', '$', '$input', preparedCode)(
+    () => ({ prepareHistoricalPage, prepareGmailMessageList: () => [] }),
+    () => ({ first: () => ({ json: configured[0].json }) }),
+    {
+      first: () => ({
+        json: { messages: [{ id: 'm1' }, { id: 'm2' }], nextPageToken: 'next' },
+      }),
+    },
+  );
+  assert.deepEqual(
+    prepared.map(({ json }) => ({
+      id: json.id,
+      hasMessage: json.hasMessage,
+      previousPageCount: json.previousState.pages,
+      nextPageCount: json.page.state.pages,
+    })),
+    [
+      { id: 'm1', hasMessage: true, previousPageCount: 0, nextPageCount: 1 },
+      { id: 'm2', hasMessage: true, previousPageCount: 0, nextPageCount: 1 },
+    ],
+  );
+
+  const processCode = code('Process Gmail Responses');
+  const processed = await new AsyncFunction('require', '$', '$input', processCode)(
+    loadPackage,
+    () => ({
+      first: () => ({ json: { enableM1: true } }),
+      all: () => prepared,
+    }),
+    {
+      all: () => [
+        {
+          pairedItem: { item: 1 },
+          json: { statusCode: 200, body: { id: 'm2', payload: {} } },
+        },
+        {
+          pairedItem: { item: 0 },
+          json: { statusCode: 404, error: 'synthetic failure' },
+        },
+      ],
+    },
+  );
+  assert.deepEqual(
+    processed.map(({ json }) => [json.messageId, json.statusCode, json.hasError]),
+    [
+      ['m1', 404, true],
+      ['m2', 200, false],
+    ],
+  );
+  assert.deepEqual(
+    workflow.connections['Has Pending M1 Page'].main.map((route) => route[0].node),
+    ['List Gmail Messages', 'Already Complete Report'],
+  );
 });
 
 test('synthetic runtime workflow is inactive and has no network nodes', () => {
